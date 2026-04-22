@@ -248,10 +248,11 @@ SightRead::Second Optimiser::earliest_fill_appearance(CacheKey key,
     }
 
     int sp_count = 0;
+    const auto activation_phrase_count = m_song->drum_activation_phrase_count();
     for (auto p = key.point; p < m_song->points().cend(); ++p) {
         if (p->is_sp_granting_note) {
             ++sp_count;
-            if (sp_count == 2) {
+            if (sp_count == activation_phrase_count) {
                 return m_song->sp_time_map().to_seconds(
                            p->hit_window_start.beat)
                     + m_drum_fill_delay;

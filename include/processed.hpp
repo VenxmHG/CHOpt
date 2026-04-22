@@ -166,6 +166,7 @@ public:
     [[nodiscard]] const SpData& sp_data() const { return m_sp_data; }
     [[nodiscard]] const SpTimeMap& sp_time_map() const { return m_time_map; }
     [[nodiscard]] bool is_drums() const { return m_is_drums; }
+    [[nodiscard]] int drum_activation_phrase_count() const;
     [[nodiscard]] const SpEngineValues& sp_engine_values() const
     {
         return m_sp_engine_values;

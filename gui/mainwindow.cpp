@@ -505,7 +505,8 @@ void MainWindow::on_engineComboBox_currentIndexChanged(int index)
         {SightRead::Instrument::FortniteDrums, "Drums"},
         {SightRead::Instrument::FortniteVocals, "Vocals"},
         {SightRead::Instrument::FortniteProGuitar, "Pro Guitar"},
-        {SightRead::Instrument::FortniteProBass, "Pro Bass"}};
+        {SightRead::Instrument::FortniteProBass, "Pro Bass"},
+        {SightRead::Instrument::FortniteProDrums, "Pro Drums"}};
     const auto game = m_ui->engineComboBox->currentData().value<Game>();
     for (auto inst : m_loaded_file->load_song(game).instruments()) {
         m_ui->instrumentComboBox->addItem(INST_NAMES.at(inst),

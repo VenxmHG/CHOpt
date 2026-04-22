@@ -17,6 +17,7 @@
  */
 
 #include <cassert>
+#include <cmath>
 #include <iomanip>
 #include <iterator>
 #include <sstream>
@@ -139,6 +140,14 @@ SpBar ProcessedSong::sp_from_phrases(PointPtr begin, PointPtr end) const
     }
 
     return sp_bar;
+}
+
+int ProcessedSong::drum_activation_phrase_count() const
+{
+    assert(m_sp_engine_values.phrase_amount > 0.0); // NOLINT
+    const auto phrase_count = std::lround(m_sp_engine_values.minimum_to_activate
+                                          / m_sp_engine_values.phrase_amount);
+    return std::max(1, static_cast<int>(phrase_count));
 }
 
 ProcessedSong::ProcessedSong(const SightRead::NoteTrack& track,
@@ -524,9 +533,10 @@ ProcessedSong::drum_act_summaries(const Path& path) const
 {
     std::vector<std::string> activation_summaries;
     auto start_point = m_points.cbegin();
+    const auto activation_phrase_count = drum_activation_phrase_count();
     for (const auto& act : path.activations) {
         int sp_count = 0;
-        while (sp_count < 2) {
+        while (sp_count < activation_phrase_count) {
             if (start_point->is_sp_granting_note) {
                 ++sp_count;
             }

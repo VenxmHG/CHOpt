@@ -51,7 +51,8 @@ std::set<SightRead::Instrument> permitted_instruments(Game game)
                 SightRead::Instrument::FortniteDrums,
                 SightRead::Instrument::FortniteVocals,
                 SightRead::Instrument::FortniteProGuitar,
-                SightRead::Instrument::FortniteProBass};
+                SightRead::Instrument::FortniteProBass,
+                SightRead::Instrument::FortniteProDrums};
     case Game::GuitarHeroOne:
     case Game::GuitarHeroTwo:
     case Game::GuitarHeroThree:

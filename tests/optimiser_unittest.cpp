@@ -726,6 +726,62 @@ BOOST_AUTO_TEST_CASE(drum_activation_delay_is_affected_by_speed)
     BOOST_CHECK_EQUAL(opt_path.score_boost, 50);
 }
 
+BOOST_AUTO_TEST_CASE(clone_hero_drums_still_require_two_phrases_to_activate)
+{
+    std::vector<SightRead::Note> notes {make_drum_note(0), make_drum_note(1000)};
+    std::vector<SightRead::StarPower> phrases {
+        {.position = SightRead::Tick {0}, .length = SightRead::Tick {1}}};
+    std::vector<SightRead::DrumFill> fills {
+        {.position = SightRead::Tick {900}, .length = SightRead::Tick {100}}};
+    SightRead::NoteTrack note_track {
+        notes, phrases, SightRead::TrackType::Drums,
+        std::make_shared<SightRead::SongGlobalData>()};
+    note_track.drum_fills(fills);
+
+    ProcessedSong track {note_track, default_measure_mode_data(),
+                         default_drums_pathing_settings()};
+    Optimiser optimiser {&track, &term_bool, 100, SightRead::Second(0.0)};
+
+    const auto opt_path = optimiser.optimal_path();
+
+    BOOST_CHECK(opt_path.activations.empty());
+    BOOST_CHECK_EQUAL(opt_path.score_boost, 0);
+}
+
+BOOST_AUTO_TEST_CASE(
+    fortnite_pro_drums_can_activate_after_one_phrase_on_drum_fills)
+{
+    std::vector<SightRead::Note> notes {
+        make_drum_note(0),
+        make_drum_note(1000, SightRead::DRUM_YELLOW,
+                       SightRead::FLAGS_CYMBAL),
+        make_drum_note(1000, SightRead::DRUM_KICK),
+        make_drum_note(1100),
+        make_drum_note(1200)};
+    std::vector<SightRead::StarPower> phrases {
+        {.position = SightRead::Tick {0}, .length = SightRead::Tick {1}}};
+    std::vector<SightRead::DrumFill> fills {
+        {.position = SightRead::Tick {900}, .length = SightRead::Tick {100}}};
+    SightRead::NoteTrack note_track {
+        notes, phrases, SightRead::TrackType::Drums,
+        std::make_shared<SightRead::SongGlobalData>()};
+    note_track.drum_fills(fills);
+
+    ProcessedSong track {note_track, default_od_beat_mode_data(),
+                         default_fortnite_pro_drums_pathing_settings()};
+    Optimiser optimiser {&track, &term_bool, 100, SightRead::Second(0.0)};
+    const auto& points = track.points();
+
+    const auto opt_path = optimiser.optimal_path();
+
+    BOOST_REQUIRE_EQUAL(opt_path.activations.size(), 1U);
+    BOOST_CHECK_GT(opt_path.score_boost, 0);
+    BOOST_CHECK(opt_path.activations.front().act_start == points.cbegin() + 1);
+    BOOST_CHECK(opt_path.activations.front().act_end >= points.cbegin() + 3);
+    BOOST_CHECK_LT(opt_path.activations.front().sp_start,
+                   opt_path.activations.front().sp_end);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(no_overlap_guitar_paths)

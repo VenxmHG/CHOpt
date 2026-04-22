@@ -217,6 +217,17 @@ inline PathingSettings default_fortnite_guitar_pathing_settings()
             SightRead::DrumSettings::default_settings()};
 }
 
+inline PathingSettings default_fortnite_pro_drums_pathing_settings()
+{
+    return {std::make_unique<FortniteGuitarEngine>(),
+            1.0,
+            1.0,
+            SightRead::Second {0.0},
+            SightRead::Second {0.0},
+            SightRead::Second {0.0},
+            {false, false, true}};
+}
+
 inline PathingSettings default_gh1_pathing_settings()
 {
     return {std::make_unique<Gh1Engine>(),

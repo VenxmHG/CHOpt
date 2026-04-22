@@ -16,8 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <atomic>
+
 #include <boost/test/unit_test.hpp>
 
+#include "optimiser.hpp"
 #include "test_helpers.hpp"
 
 namespace {
@@ -225,7 +228,7 @@ BOOST_AUTO_TEST_CASE(unison_bonuses_are_taken_account_of)
     BOOST_CHECK_EQUAL(song.total_available_sp(SightRead::Beat(0.0),
                                               points.cbegin(),
                                               points.cbegin() + 1),
-                      SpBar(0.502, 0.502, {0.251, 0.502, 0.5}));
+                      SpBar(0.501, 0.501, {0.251, 0.501, 0.5}));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -272,7 +275,7 @@ BOOST_AUTO_TEST_CASE(total_available_sp_with_earliest_pos_counts_unison_bonuses)
         SightRead::Beat(0.0), points.cbegin(), std::next(points.cbegin()),
         {.beat = SightRead::Beat(0.0), .sp_measure = SpMeasure(0.0)});
 
-    BOOST_CHECK_CLOSE(sp_bar.max(), 0.502, 0.0001);
+    BOOST_CHECK_CLOSE(sp_bar.max(), 0.501, 0.0001);
 }
 
 BOOST_AUTO_TEST_SUITE(is_candidate_valid_works_with_no_whammy)
@@ -2074,6 +2077,48 @@ BOOST_AUTO_TEST_CASE(alternative_path_notation_l_and_e_are_used_for_drums)
                                       "Average multiplier: 1.250x";
 
     BOOST_CHECK_EQUAL(track.path_summary(path), desired_path_output);
+}
+
+BOOST_AUTO_TEST_CASE(
+    fortnite_pro_drums_path_summary_uses_one_phrase_activation_threshold)
+{
+    const std::vector<SightRead::Note> notes {
+        make_drum_note(0),
+        make_drum_note(1000, SightRead::DRUM_YELLOW,
+                       SightRead::FLAGS_CYMBAL),
+        make_drum_note(1000, SightRead::DRUM_KICK),
+        make_drum_note(1100),
+        make_drum_note(1200)};
+    const std::vector<SightRead::StarPower> phrases {
+        {.position = SightRead::Tick {0}, .length = SightRead::Tick {1}}};
+    const std::vector<SightRead::DrumFill> fills {
+        {.position = SightRead::Tick {900}, .length = SightRead::Tick {100}}};
+    const std::atomic<bool> term_bool {false};
+
+    SightRead::NoteTrack ch_track {notes, phrases, SightRead::TrackType::Drums,
+                                   std::make_shared<SightRead::SongGlobalData>()};
+    ch_track.drum_fills(fills);
+    ProcessedSong processed_ch_track {ch_track, default_measure_mode_data(),
+                                      default_drums_pathing_settings()};
+    BOOST_CHECK_EQUAL(processed_ch_track.drum_activation_phrase_count(), 2);
+    Optimiser ch_optimiser {&processed_ch_track, &term_bool, 100,
+                            SightRead::Second(0.0)};
+    const auto ch_path = ch_optimiser.optimal_path();
+    BOOST_CHECK(processed_ch_track.path_summary(ch_path).starts_with(
+        "Path: None\n"));
+
+    SightRead::NoteTrack fnf_track {
+        notes, phrases, SightRead::TrackType::Drums,
+        std::make_shared<SightRead::SongGlobalData>()};
+    fnf_track.drum_fills(fills);
+    ProcessedSong processed_fnf_track {fnf_track, default_od_beat_mode_data(),
+                                       default_fortnite_pro_drums_pathing_settings()};
+    BOOST_CHECK_EQUAL(processed_fnf_track.drum_activation_phrase_count(), 1);
+    Optimiser fnf_optimiser {&processed_fnf_track, &term_bool, 100,
+                             SightRead::Second(0.0)};
+    const auto fnf_path = fnf_optimiser.optimal_path();
+    BOOST_CHECK(processed_fnf_track.path_summary(fnf_path).starts_with(
+        "Path: 0"));
 }
 
 BOOST_AUTO_TEST_CASE(average_multiplier_is_ignored_with_rb)

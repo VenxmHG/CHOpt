@@ -34,7 +34,7 @@ by passing -h or --help to CHOpt, or by consulting the table below.
 | -f, --file              | Chart filename                                                                |
 | -o, --output            | Filename of output image (.bmp or .png)                                       |
 | -d, --diff              | Difficulty (easy/medium/hard/expert)                                          |
-| -i, --instrument        | Instrument (guitar/coop/bass/rhythm/keys/ghl/ghlbass/drums/proguitar/probass) |
+| -i, --instrument        | Instrument (guitar/coop/bass/rhythm/keys/ghl/ghlbass/drums/proguitar/probass/prodrums) |
 | --sqz, --squeeze        | Set squeeze %                                                                 |
 | --ew, --early-whammy    | Set early whammy %                                                            |
 | --lazy, --lazy-whammy   | Set number of ms of whammy lost per sustain                                   |
