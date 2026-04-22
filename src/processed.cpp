@@ -157,6 +157,7 @@ ProcessedSong::ProcessedSong(const SightRead::NoteTrack& track,
     , m_points {track, duration_data, pathing_settings}
     , m_sp_data {track, duration_data, pathing_settings}
     , m_sp_engine_values {pathing_settings.engine->sp_engine_values()}
+    , m_drum_fill_delay {pathing_settings.engine->drum_fill_delay()}
     , m_total_bre_boost {bre_boost(track, *pathing_settings.engine)}
     , m_base_score {track.base_score(pathing_settings.drum_settings)}
     , m_ignore_average_multiplier {pathing_settings.engine
@@ -545,10 +546,10 @@ ProcessedSong::drum_act_summaries(const Path& path) const
         const auto early_fill_point
             = m_time_map.to_seconds(
                   std::prev(start_point)->hit_window_start.beat)
-            + SightRead::Second(2.0);
+            + m_drum_fill_delay;
         const auto late_fill_point
             = m_time_map.to_seconds(std::prev(start_point)->hit_window_end.beat)
-            + SightRead::Second(2.0);
+            + m_drum_fill_delay;
         const auto skipped_fills
             = std::count_if(start_point, act.act_start, [&](const auto& p) {
                   return p.fill_start.has_value()

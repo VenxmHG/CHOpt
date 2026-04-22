@@ -2084,15 +2084,15 @@ BOOST_AUTO_TEST_CASE(
 {
     const std::vector<SightRead::Note> notes {
         make_drum_note(0),
-        make_drum_note(1000, SightRead::DRUM_YELLOW,
+        make_drum_note(2600, SightRead::DRUM_YELLOW,
                        SightRead::FLAGS_CYMBAL),
-        make_drum_note(1000, SightRead::DRUM_KICK),
-        make_drum_note(1100),
-        make_drum_note(1200)};
+        make_drum_note(2600, SightRead::DRUM_KICK),
+        make_drum_note(2700),
+        make_drum_note(2800)};
     const std::vector<SightRead::StarPower> phrases {
         {.position = SightRead::Tick {0}, .length = SightRead::Tick {1}}};
     const std::vector<SightRead::DrumFill> fills {
-        {.position = SightRead::Tick {900}, .length = SightRead::Tick {100}}};
+        {.position = SightRead::Tick {2500}, .length = SightRead::Tick {100}}};
     const std::atomic<bool> term_bool {false};
 
     SightRead::NoteTrack ch_track {notes, phrases, SightRead::TrackType::Drums,
@@ -2119,6 +2119,37 @@ BOOST_AUTO_TEST_CASE(
     const auto fnf_path = fnf_optimiser.optimal_path();
     BOOST_CHECK(processed_fnf_track.path_summary(fnf_path).starts_with(
         "Path: 0"));
+}
+
+BOOST_AUTO_TEST_CASE(
+    fortnite_pro_drums_path_summary_ignores_fills_before_unique_delay)
+{
+    const std::vector<SightRead::Note> notes {
+        make_drum_note(0),
+        make_drum_note(2300, SightRead::DRUM_YELLOW,
+                       SightRead::FLAGS_CYMBAL),
+        make_drum_note(2300, SightRead::DRUM_KICK),
+        make_drum_note(2600),
+        make_drum_note(2700)};
+    const std::vector<SightRead::StarPower> phrases {
+        {.position = SightRead::Tick {0}, .length = SightRead::Tick {1}}};
+    const std::vector<SightRead::DrumFill> fills {
+        {.position = SightRead::Tick {2200}, .length = SightRead::Tick {100}},
+        {.position = SightRead::Tick {2500}, .length = SightRead::Tick {100}}};
+
+    SightRead::NoteTrack fnf_track {
+        notes, phrases, SightRead::TrackType::Drums,
+        std::make_shared<SightRead::SongGlobalData>()};
+    fnf_track.drum_fills(fills);
+    ProcessedSong processed_fnf_track {fnf_track, default_od_beat_mode_data(),
+                                       default_fortnite_pro_drums_pathing_settings()};
+    const auto& points = processed_fnf_track.points();
+    Path path {.activations = {{.act_start = points.cbegin() + 2,
+                                .act_end = points.cbegin() + 3}},
+               .score_boost = 0};
+
+    BOOST_CHECK(processed_fnf_track.path_summary(path).starts_with(
+        "Path: 0(E)\n"));
 }
 
 BOOST_AUTO_TEST_CASE(average_multiplier_is_ignored_with_rb)

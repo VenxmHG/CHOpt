@@ -219,7 +219,7 @@ inline PathingSettings default_fortnite_guitar_pathing_settings()
 
 inline PathingSettings default_fortnite_pro_drums_pathing_settings()
 {
-    return {std::make_unique<FortniteGuitarEngine>(),
+    return {std::make_unique<FortniteProDrumsEngine>(),
             1.0,
             1.0,
             SightRead::Second {0.0},

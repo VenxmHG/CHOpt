@@ -44,6 +44,10 @@ public:
     {
         return base_note_value();
     }
+    [[nodiscard]] virtual SightRead::Second drum_fill_delay() const
+    {
+        return SightRead::Second {2.0};
+    }
     [[nodiscard]] virtual double burst_size() const = 0;
     [[nodiscard]] virtual bool chords_multiply_sustains() const = 0;
     [[nodiscard]] virtual bool delayed_multiplier() const = 0;
@@ -251,6 +255,18 @@ public:
 };
 
 class FortniteGuitarEngine final : public BaseFortniteEngine {
+    [[nodiscard]] int max_multiplier() const override { return 4; }
+    [[nodiscard]] int sust_points_per_beat() const override { return 12; }
+};
+
+class FortniteProDrumsEngine final : public BaseFortniteEngine {
+private:
+    static constexpr double DRUM_FILL_DELAY_SECONDS = 6.8;
+
+    [[nodiscard]] SightRead::Second drum_fill_delay() const override
+    {
+        return SightRead::Second {DRUM_FILL_DELAY_SECONDS};
+    }
     [[nodiscard]] int max_multiplier() const override { return 4; }
     [[nodiscard]] int sust_points_per_beat() const override { return 12; }
 };

@@ -88,6 +88,7 @@ private:
     PointSet m_points;
     SpData m_sp_data;
     SpEngineValues m_sp_engine_values;
+    SightRead::Second m_drum_fill_delay;
     std::vector<PhrasePointSpan> m_phrase_note_spans;
     int m_total_bre_boost;
     int m_total_solo_boost;
@@ -167,6 +168,10 @@ public:
     [[nodiscard]] const SpTimeMap& sp_time_map() const { return m_time_map; }
     [[nodiscard]] bool is_drums() const { return m_is_drums; }
     [[nodiscard]] int drum_activation_phrase_count() const;
+    [[nodiscard]] SightRead::Second drum_fill_delay() const
+    {
+        return m_drum_fill_delay;
+    }
     [[nodiscard]] const SpEngineValues& sp_engine_values() const
     {
         return m_sp_engine_values;

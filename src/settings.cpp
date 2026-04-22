@@ -202,7 +202,7 @@ game_to_engine(Game game, SightRead::Instrument instrument, bool precision_mode)
             return std::make_unique<FortniteBassEngine>();
         }
         if (instrument == SightRead::Instrument::FortniteProDrums) {
-            return std::make_unique<FortniteGuitarEngine>();
+            return std::make_unique<FortniteProDrumsEngine>();
         }
         if (instrument == SightRead::Instrument::FortniteVocals) {
             return std::make_unique<FortniteVocalsEngine>();
