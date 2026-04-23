@@ -253,6 +253,9 @@ SightRead::Second Optimiser::earliest_fill_appearance(CacheKey key,
         if (p->is_sp_granting_note) {
             ++sp_count;
             if (sp_count == activation_phrase_count) {
+                if (m_song->drum_fill_measure_delay().has_value()) {
+                    return m_song->drum_fill_delay_bounds(p).first;
+                }
                 return m_song->sp_time_map().to_seconds(
                            p->hit_window_start.beat)
                     + m_drum_fill_delay;

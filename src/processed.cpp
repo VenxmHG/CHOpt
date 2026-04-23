@@ -153,11 +153,14 @@ int ProcessedSong::drum_activation_phrase_count() const
 ProcessedSong::ProcessedSong(const SightRead::NoteTrack& track,
                              const SpDurationData& duration_data,
                              const PathingSettings& pathing_settings)
-    : m_time_map {duration_data.time_map}
+    : m_tempo_map {track.global_data().tempo_map()}
+    , m_time_map {duration_data.time_map}
     , m_points {track, duration_data, pathing_settings}
     , m_sp_data {track, duration_data, pathing_settings}
     , m_sp_engine_values {pathing_settings.engine->sp_engine_values()}
     , m_drum_fill_delay {pathing_settings.engine->drum_fill_delay()}
+    , m_drum_fill_measure_delay {pathing_settings.engine
+                                     ->drum_fill_measure_delay()}
     , m_total_bre_boost {bre_boost(track, *pathing_settings.engine)}
     , m_base_score {track.base_score(pathing_settings.drum_settings)}
     , m_ignore_average_multiplier {pathing_settings.engine
@@ -186,6 +189,23 @@ ProcessedSong::ProcessedSong(const SightRead::NoteTrack& track,
               });
         m_phrase_note_spans.push_back({.begin = start, .end = end});
     }
+}
+
+std::pair<SightRead::Second, SightRead::Second>
+ProcessedSong::drum_fill_delay_bounds(PointPtr sp_granting_point) const
+{
+    if (m_drum_fill_measure_delay.has_value()) {
+        const auto fill_measure
+            = m_tempo_map.to_measures(sp_granting_point->position.beat)
+            + *m_drum_fill_measure_delay;
+        const auto fill_time = m_tempo_map.to_seconds(fill_measure);
+        return {fill_time, fill_time};
+    }
+
+    return {m_time_map.to_seconds(sp_granting_point->hit_window_start.beat)
+                + m_drum_fill_delay,
+            m_time_map.to_seconds(sp_granting_point->hit_window_end.beat)
+                + m_drum_fill_delay};
 }
 
 SpBar ProcessedSong::total_available_sp(
@@ -543,13 +563,8 @@ ProcessedSong::drum_act_summaries(const Path& path) const
             }
             ++start_point;
         }
-        const auto early_fill_point
-            = m_time_map.to_seconds(
-                  std::prev(start_point)->hit_window_start.beat)
-            + m_drum_fill_delay;
-        const auto late_fill_point
-            = m_time_map.to_seconds(std::prev(start_point)->hit_window_end.beat)
-            + m_drum_fill_delay;
+        const auto [early_fill_point, late_fill_point]
+            = drum_fill_delay_bounds(std::prev(start_point));
         const auto skipped_fills
             = std::count_if(start_point, act.act_start, [&](const auto& p) {
                   return p.fill_start.has_value()

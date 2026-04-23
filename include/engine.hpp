@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <optional>
 
 #include <sightread/time.hpp>
 
@@ -47,6 +48,11 @@ public:
     [[nodiscard]] virtual SightRead::Second drum_fill_delay() const
     {
         return SightRead::Second {2.0};
+    }
+    [[nodiscard]] virtual std::optional<SightRead::Measure>
+    drum_fill_measure_delay() const
+    {
+        return std::nullopt;
     }
     [[nodiscard]] virtual double burst_size() const = 0;
     [[nodiscard]] virtual bool chords_multiply_sustains() const = 0;
@@ -261,11 +267,12 @@ class FortniteGuitarEngine final : public BaseFortniteEngine {
 
 class FortniteProDrumsEngine final : public BaseFortniteEngine {
 private:
-    static constexpr double DRUM_FILL_DELAY_SECONDS = 6.8;
+    static constexpr double DRUM_FILL_DELAY_MEASURES = 3.0;
 
-    [[nodiscard]] SightRead::Second drum_fill_delay() const override
+    [[nodiscard]] std::optional<SightRead::Measure>
+    drum_fill_measure_delay() const override
     {
-        return SightRead::Second {DRUM_FILL_DELAY_SECONDS};
+        return SightRead::Measure {DRUM_FILL_DELAY_MEASURES};
     }
     [[nodiscard]] int max_multiplier() const override { return 4; }
     [[nodiscard]] int sust_points_per_beat() const override { return 12; }

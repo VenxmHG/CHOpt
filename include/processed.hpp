@@ -20,6 +20,7 @@
 #define CHOPT_PROCESSED_HPP
 
 #include <limits>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -84,11 +85,13 @@ private:
         PointPtr end;
     };
 
+    SightRead::TempoMap m_tempo_map;
     SpTimeMap m_time_map;
     PointSet m_points;
     SpData m_sp_data;
     SpEngineValues m_sp_engine_values;
     SightRead::Second m_drum_fill_delay;
+    std::optional<SightRead::Measure> m_drum_fill_measure_delay;
     std::vector<PhrasePointSpan> m_phrase_note_spans;
     int m_total_bre_boost;
     int m_total_solo_boost;
@@ -172,6 +175,13 @@ public:
     {
         return m_drum_fill_delay;
     }
+    [[nodiscard]] std::optional<SightRead::Measure>
+    drum_fill_measure_delay() const
+    {
+        return m_drum_fill_measure_delay;
+    }
+    [[nodiscard]] std::pair<SightRead::Second, SightRead::Second>
+    drum_fill_delay_bounds(PointPtr sp_granting_point) const;
     [[nodiscard]] const SpEngineValues& sp_engine_values() const
     {
         return m_sp_engine_values;
