@@ -126,6 +126,51 @@ BOOST_AUTO_TEST_CASE(rb_phrase_base_scores_follow_combo_multiplier)
     BOOST_CHECK_EQUAL(song.total_base_score(), 14000);
 }
 
+BOOST_AUTO_TEST_CASE(fortnite_karaoke_phrase_base_scores_ignore_tube_count)
+{
+    const auto track = make_vocal_track(
+        {{.position = SightRead::Tick {0},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = false},
+         {.position = SightRead::Tick {384},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = false},
+         {.position = SightRead::Tick {768},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = false}},
+        {{.position = SightRead::Tick {0},
+          .length = SightRead::Tick {192},
+          .pitch = 60,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = SightRead::Tick {384},
+          .length = SightRead::Tick {96},
+          .pitch = 62,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = SightRead::Tick {480},
+          .length = SightRead::Tick {96},
+          .pitch = 64,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = SightRead::Tick {768},
+          .length = SightRead::Tick {64},
+          .pitch = 65,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = SightRead::Tick {832},
+          .length = SightRead::Tick {64},
+          .pitch = 67,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = SightRead::Tick {896},
+          .length = SightRead::Tick {64},
+          .pitch = 69,
+          .type = SightRead::VocalTubeType::Pitched}});
+    const VocalsProcessedSong song {track, default_karaoke_pathing_settings()};
+
+    BOOST_REQUIRE_EQUAL(song.phrases().size(), 3U);
+    BOOST_CHECK_EQUAL(song.phrases().at(0).base_score, 1000);
+    BOOST_CHECK_EQUAL(song.phrases().at(1).base_score, 2000);
+    BOOST_CHECK_EQUAL(song.phrases().at(2).base_score, 3000);
+    BOOST_CHECK_EQUAL(song.total_base_score(), 6000);
+}
+
 BOOST_AUTO_TEST_CASE(longer_tubes_have_more_pie_units)
 {
     const auto track = make_vocal_track(

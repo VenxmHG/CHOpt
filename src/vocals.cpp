@@ -144,13 +144,9 @@ std::vector<BeatRange> merged_phrase_segments(
     return merged_segments;
 }
 
-int vocal_phrase_base_score(bool rb_scoring, int multiplier,
-                            int pitched_tube_count)
+int vocal_phrase_base_score(int multiplier)
 {
-    if (rb_scoring) {
-        return 1000 * multiplier;
-    }
-    return 1000 * multiplier + 100 * pitched_tube_count;
+    return 1000 * multiplier;
 }
 
 void add_measure_boundaries(const SightRead::TempoMap& tempo_map,
@@ -647,7 +643,6 @@ VocalsProcessedSong::VocalsProcessedSong(const SightRead::VocalTrack& track,
         std::vector<VocalScoredSegment> scored_segments;
         scored_segments.reserve(merged_segments.size());
         auto total_scored_seconds = 0.0;
-        auto pitched_tube_count = 0;
         for (const auto& [start, end] : merged_segments) {
             const auto duration_seconds
                 = range_duration_seconds(m_tempo_map, start, end);
@@ -655,25 +650,10 @@ VocalsProcessedSong::VocalsProcessedSong(const SightRead::VocalTrack& track,
                 {.start = start, .end = end, .duration_seconds = duration_seconds});
             total_scored_seconds += duration_seconds;
         }
-        for (const auto& tube : tubes) {
-            const auto tube_end = tube.position + tube.length;
-            if (tube.position >= phrase.position + phrase.length) {
-                break;
-            }
-            if (tube_end <= phrase.position) {
-                continue;
-            }
-            if (tube.type == SightRead::VocalTubeType::Pitched
-                && tube.position >= phrase.position
-                && tube_end <= phrase.position + phrase.length) {
-                ++pitched_tube_count;
-            }
-        }
 
         const auto multiplier
             = std::min(max_multiplier, static_cast<int>(i) + 1);
-        const auto base_score
-            = vocal_phrase_base_score(rb_scoring, multiplier, pitched_tube_count);
+        const auto base_score = vocal_phrase_base_score(multiplier);
         m_total_base_score += base_score;
         m_phrases.push_back({.start = phrase_start,
                              .end = phrase_end,
