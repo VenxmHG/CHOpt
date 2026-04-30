@@ -18,6 +18,7 @@ constexpr double SP_BUCKET_SCALE = 1000.0;
 constexpr double SP_EPSILON = 0.000001;
 constexpr double FULL_SP_UNITS = 8.0;
 constexpr double MIN_INTERNAL_WINDOW_SECONDS = 0.6;
+constexpr double MIN_KARAOKE_POST_PHRASE_REAPPEAR_SECONDS = 0.5;
 constexpr double KARAOKE_HIDDEN_POST_PHRASE_WINDOW_MEASURES = 3.5;
 constexpr double KARAOKE_POST_PHRASE_REAPPEAR_REFERENCE_BPM = 97.0;
 constexpr double KARAOKE_POST_PHRASE_REAPPEAR_REFERENCE_BEATS = 4.25;
@@ -102,11 +103,12 @@ double range_duration_seconds(const SightRead::TempoMap& tempo_map,
 }
 
 bool is_large_internal_window(const SightRead::TempoMap& tempo_map,
-                              SightRead::Beat start, SightRead::Beat end)
+                              SightRead::Beat start, SightRead::Beat end,
+                              double minimum_seconds
+                              = MIN_INTERNAL_WINDOW_SECONDS)
 {
     return has_width(start, end)
-        && range_duration_seconds(tempo_map, start, end)
-        >= MIN_INTERNAL_WINDOW_SECONDS;
+        && range_duration_seconds(tempo_map, start, end) >= minimum_seconds;
 }
 
 bool is_hidden_karaoke_post_phrase_window(const SightRead::TempoMap& tempo_map,
@@ -135,18 +137,25 @@ double bpm_at(const SightRead::TempoMap& tempo_map, SightRead::Beat beat)
     return current_bpm;
 }
 
-std::optional<SightRead::Beat>
-karaoke_post_phrase_reappear_start(const SightRead::TempoMap& tempo_map,
-                                   SightRead::Beat window_end)
+std::optional<SightRead::Beat> karaoke_post_phrase_reappear_start(
+    const SightRead::TempoMap& tempo_map, SightRead::Beat phrase_end,
+    SightRead::Beat minimum_start, SightRead::Beat window_end)
 {
     const auto local_bpm = bpm_at(tempo_map, window_end);
     const auto scaled_window_seconds = KARAOKE_POST_PHRASE_REAPPEAR_SECONDS
         * std::pow(KARAOKE_POST_PHRASE_REAPPEAR_REFERENCE_BPM / local_bpm,
                    KARAOKE_POST_PHRASE_REAPPEAR_TEMPO_RATE);
-    const auto reappear_start
+    const auto nominal_reappear_start
         = tempo_map.to_beats(tempo_map.to_seconds(window_end)
                              - SightRead::Second {scaled_window_seconds});
-    if (!is_large_internal_window(tempo_map, reappear_start, window_end)) {
+    const auto hidden_threshold_start = tempo_map.to_beats(
+        tempo_map.to_measures(phrase_end)
+        + SightRead::Measure {KARAOKE_HIDDEN_POST_PHRASE_WINDOW_MEASURES});
+    const auto reappear_start
+        = std::max(std::max(minimum_start, hidden_threshold_start),
+                   nominal_reappear_start);
+    if (!is_large_internal_window(tempo_map, reappear_start, window_end,
+                                  MIN_KARAOKE_POST_PHRASE_REAPPEAR_SECONDS)) {
         return std::nullopt;
     }
     return reappear_start;
@@ -780,14 +789,13 @@ VocalsProcessedSong::VocalsProcessedSong(
             add_internal_window(i, previous_content_end.value_or(phrase.start),
                                 first_content_start);
         } else if (previous_phrase_end.has_value()) {
+            const auto minimum_start
+                = previous_content_end.value_or(*previous_phrase_end);
             const auto reappear_start = karaoke_post_phrase_reappear_start(
-                m_tempo_map, first_content_start);
+                m_tempo_map, *previous_phrase_end, minimum_start,
+                first_content_start);
             if (reappear_start.has_value()) {
-                add_window(i,
-                           std::max(previous_content_end.value_or(
-                                        *previous_phrase_end),
-                                    *reappear_start),
-                           first_content_start);
+                add_window(i, *reappear_start, first_content_start);
             }
         }
         for (std::size_t segment_index = 1;
@@ -1064,7 +1072,12 @@ std::string VocalsProcessedSong::path_summary(const VocalPath& path,
         if (before_od_phrase) {
             phrase_cursor = activation.start_phrase_index;
         } else {
-            phrase_cursor = activation.end_phrase_index + 1;
+            const auto& end_phrase = m_phrases.at(activation.end_phrase_index);
+            phrase_cursor = end_phrase.is_sp_phrase
+                    && activation.end.value()
+                        <= end_phrase.end.value() + SP_EPSILON
+                ? activation.end_phrase_index
+                : activation.end_phrase_index + 1;
         }
     }
     return stream.str();

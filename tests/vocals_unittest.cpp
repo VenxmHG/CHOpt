@@ -368,6 +368,68 @@ BOOST_AUTO_TEST_CASE(vocal_path_summary_reports_skipped_activation_windows)
                       "Acts: 1/sk1");
 }
 
+BOOST_AUTO_TEST_CASE(vocal_path_summary_counts_skips_after_mid_phrase_sp_pickup)
+{
+    const auto track = make_vocal_track_at_bpm(
+        120.0,
+        {{.position = measure_tick(0.0),
+          .length = measure_tick(0.5),
+          .is_sp_phrase = true},
+         {.position = measure_tick(1.0),
+          .length = measure_tick(1.0),
+          .is_sp_phrase = true},
+         {.position = measure_tick(2.25),
+          .length = measure_tick(0.75),
+          .is_sp_phrase = false},
+         {.position = measure_tick(4.0),
+          .length = measure_tick(0.75),
+          .is_sp_phrase = false},
+         {.position = measure_tick(5.75),
+          .length = measure_tick(0.75),
+          .is_sp_phrase = false}},
+        {{.position = measure_tick(0.0),
+          .length = measure_tick(0.25),
+          .pitch = 60,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = measure_tick(1.0),
+          .length = measure_tick(0.5),
+          .pitch = 62,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = measure_tick(2.75),
+          .length = measure_tick(0.25),
+          .pitch = 64,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = measure_tick(4.5),
+          .length = measure_tick(0.25),
+          .pitch = 65,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = measure_tick(6.25),
+          .length = measure_tick(0.25),
+          .pitch = 67,
+          .type = SightRead::VocalTubeType::Pitched}});
+    const VocalsProcessedSong song {track, default_karaoke_pathing_settings()};
+    const VocalPath path {
+        .activations = {{.start_phrase_index = 0,
+                         .end_phrase_index = 1,
+                         .start = song.phrases().at(0).start,
+                         .end = song.tempo_map().to_beats(measure_tick(1.5)),
+                         .sp_start = 0.25},
+                        {.start_phrase_index = 4,
+                         .end_phrase_index = 4,
+                         .start = song.activation_windows().at(3).start,
+                         .end = song.phrases().at(4).end,
+                         .sp_start = 0.25}},
+        .phrase_score_boosts = {0, 0, 0, 0, song.phrases().at(4).base_score},
+        .score_boost = song.phrases().at(4).base_score};
+
+    BOOST_REQUIRE_EQUAL(song.activation_windows().size(), 4U);
+    BOOST_CHECK_LT(path.activations.at(0).end.value(),
+                   song.phrases().at(1).end.value());
+    BOOST_CHECK_EQUAL(song.path_summary(path), "Acts: 1/ 1/s2");
+    BOOST_CHECK_EQUAL(song.path_summary(path, VocalPathNotation::ScoreHero),
+                      "Acts: 1/ 1/sk2");
+}
+
 BOOST_AUTO_TEST_CASE(
     vocal_path_summary_counts_sp_phrases_after_the_previous_activation)
 {
@@ -965,30 +1027,61 @@ BOOST_AUTO_TEST_CASE(
 BOOST_AUTO_TEST_CASE(
     fortnite_karaoke_large_post_phrase_gaps_reappear_before_next_phrase)
 {
-    const auto track
-        = make_vocal_track({{.position = measure_tick(0.0),
-                             .length = measure_tick(1.0),
-                             .is_sp_phrase = false},
-                            {.position = measure_tick(4.75),
-                             .length = measure_tick(1.0),
-                             .is_sp_phrase = false}},
-                           {{.position = measure_tick(0.0),
-                             .length = measure_tick(1.0),
-                             .pitch = 60,
-                             .type = SightRead::VocalTubeType::Pitched},
-                            {.position = measure_tick(4.75),
-                             .length = measure_tick(0.5),
-                             .pitch = 62,
-                             .type = SightRead::VocalTubeType::Pitched}});
+    const auto track = make_vocal_track_at_bpm(
+        97.0,
+        {{.position = measure_tick(42.0),
+          .length = measure_tick(1.0),
+          .is_sp_phrase = false},
+         {.position = measure_tick(46.875),
+          .length = measure_tick(2.0),
+          .is_sp_phrase = false}},
+        {{.position = measure_tick(42.0),
+          .length = measure_tick(1.0),
+          .pitch = 60,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = measure_tick(47.0),
+          .length = measure_tick(0.5),
+          .pitch = 62,
+          .type = SightRead::VocalTubeType::Pitched}});
     const VocalsProcessedSong song {track, default_karaoke_pathing_settings()};
 
     BOOST_REQUIRE_EQUAL(song.activation_windows().size(), 1U);
     BOOST_CHECK_CLOSE(song.tempo_map()
                           .to_measures(song.activation_windows().at(0).start)
                           .value(),
-                      3.8911, 0.01);
+                      46.5, 0.01);
     BOOST_CHECK_CLOSE(song.activation_windows().at(0).end.value(),
-                      measure_tick(4.75).value() / 192.0, 0.0001);
+                      measure_tick(47.0).value() / 192.0, 0.0001);
+}
+
+BOOST_AUTO_TEST_CASE(
+    fortnite_karaoke_post_phrase_reappear_allows_short_game_window)
+{
+    const auto track = make_vocal_track_at_bpm(
+        171.0,
+        {{.position = measure_tick(117.625),
+          .length = measure_tick(1.5),
+          .is_sp_phrase = false},
+         {.position = measure_tick(122.875),
+          .length = measure_tick(2.8125),
+          .is_sp_phrase = false}},
+        {{.position = measure_tick(117.734375),
+          .length = measure_tick(1.234375),
+          .pitch = 78,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = measure_tick(123.0),
+          .length = measure_tick(0.0546875),
+          .pitch = 62,
+          .type = SightRead::VocalTubeType::Pitched}});
+    const VocalsProcessedSong song {track, default_karaoke_pathing_settings()};
+
+    BOOST_REQUIRE_EQUAL(song.activation_windows().size(), 1U);
+    BOOST_CHECK_CLOSE(song.tempo_map()
+                          .to_measures(song.activation_windows().at(0).start)
+                          .value(),
+                      122.625, 0.01);
+    BOOST_CHECK_CLOSE(song.activation_windows().at(0).end.value(),
+                      measure_tick(123.0).value() / 192.0, 0.0001);
 }
 
 BOOST_AUTO_TEST_CASE(
