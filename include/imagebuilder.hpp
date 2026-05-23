@@ -57,6 +57,18 @@ struct DrawnVocalTube {
     bool is_sp_phrase;
 };
 
+struct DrawnVocalSqueezeRange {
+    double start;
+    double end;
+    int pitch;
+    SightRead::VocalTubeType type;
+};
+
+struct DrawnVocalSqueezeLabel {
+    double beat;
+    std::string text;
+};
+
 struct DrawnLyric {
     double beat;
     std::string text;
@@ -91,6 +103,8 @@ private:
     std::vector<std::tuple<double, double>> m_fill_ranges;
     std::vector<std::tuple<double, double>> m_unison_ranges;
     std::vector<DrawnVocalTube> m_vocal_tubes;
+    std::vector<DrawnVocalSqueezeRange> m_vocal_no_sing_ranges;
+    std::vector<DrawnVocalSqueezeLabel> m_vocal_squeeze_labels;
     std::vector<DrawnLyric> m_lyrics;
     std::vector<std::tuple<double, double>> m_phrase_ranges;
     std::vector<std::tuple<double, double>> m_window_ranges;
@@ -133,6 +147,9 @@ public:
     void add_sp_acts(const PointSet& points,
                      const SightRead::TempoMap& tempo_map, const Path& path);
     void add_sp_acts(const VocalPath& path);
+    void add_vocal_squeeze_guides(
+        const VocalsProcessedSong& song, const VocalPath& path,
+        VocalPathNotation notation = VocalPathNotation::Rbpv);
     void add_sp_percent_values(const SpData& sp_data, const SpTimeMap& time_map,
                                const PointSet& points, const Path& path,
                                const SpEngineValues& sp_engine_values);
@@ -205,6 +222,16 @@ public:
     [[nodiscard]] const std::vector<DrawnVocalTube>& vocal_tubes() const
     {
         return m_vocal_tubes;
+    }
+    [[nodiscard]] const std::vector<DrawnVocalSqueezeRange>&
+    vocal_no_sing_ranges() const
+    {
+        return m_vocal_no_sing_ranges;
+    }
+    [[nodiscard]] const std::vector<DrawnVocalSqueezeLabel>&
+    vocal_squeeze_labels() const
+    {
+        return m_vocal_squeeze_labels;
     }
     [[nodiscard]] const std::vector<DrawnLyric>& lyrics() const
     {

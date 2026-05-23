@@ -49,6 +49,25 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 add_subdirectory("extern/sightread")
 
+function(configure_msvc_dependency_linking target)
+  if(MSVC AND TARGET ${target})
+    # Keep Boost linkage explicit in MSVC builds; CMake already wires the
+    # imported targets and Boost auto-linking can pick different libraries.
+    target_compile_definitions(${target} PRIVATE BOOST_ALL_NO_LIB)
+  endif()
+endfunction()
+
+function(disable_vcpkg_msbuild_integration target)
+  if(MSVC AND TARGET ${target})
+    # These targets are already configured through the active CMake toolchain.
+    # Disabling the VS vcpkg hook avoids a second dependency resolution pass.
+    set_target_properties(${target} PROPERTIES VS_GLOBAL_VcpkgEnabled false)
+  endif()
+endfunction()
+
+configure_msvc_dependency_linking(sightread)
+disable_vcpkg_msbuild_integration(sightread)
+
 include(CheckPIESupported)
 check_pie_supported(OUTPUT_VARIABLE output LANGUAGES CXX)
 
@@ -77,6 +96,8 @@ add_executable(
 target_include_directories(
   chopt PRIVATE "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/libs" ${PNG_INCLUDE_DIRS})
 target_link_libraries(chopt PRIVATE ${PNG_LIBRARIES} Boost::locale Qt6::Core Qt6::Gui sightread)
+configure_msvc_dependency_linking(chopt)
+disable_vcpkg_msbuild_integration(chopt)
 
 set_property(TARGET chopt PROPERTY POSITION_INDEPENDENT_CODE FALSE)
 if(APPLE)
@@ -112,6 +133,8 @@ if(BUILD_GUI)
   target_include_directories(
     choptgui PRIVATE "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/libs" ${PNG_INCLUDE_DIRS})
   target_link_libraries(choptgui PRIVATE ${PNG_LIBRARIES} Boost::locale Qt6::Widgets sightread)
+  configure_msvc_dependency_linking(choptgui)
+  disable_vcpkg_msbuild_integration(choptgui)
 
   set_property(TARGET choptgui PROPERTY POSITION_INDEPENDENT_CODE FALSE)
 
@@ -143,6 +166,7 @@ if(PACKAGE_TESTS)
     src/points.cpp
     src/processed.cpp
     src/settings.cpp
+    src/songfile.cpp
     src/sp.cpp
     src/sptimemap.cpp
     src/stringutil.cpp
@@ -151,6 +175,7 @@ if(PACKAGE_TESTS)
   target_include_directories(chopt_tests
     PRIVATE "${PROJECT_SOURCE_DIR}/include")
   target_link_libraries(chopt_tests PRIVATE Boost::locale Qt6::Core sightread)
+  configure_msvc_dependency_linking(chopt_tests)
   if(TARGET Boost::unit_test_framework)
     target_link_libraries(chopt_tests PRIVATE Boost::unit_test_framework)
   endif()

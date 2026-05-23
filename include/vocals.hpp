@@ -19,8 +19,10 @@ struct VocalPieProfile {
     double nonpitch_multiplier;
     double short_tube_threshold_ms;
     double short_tube_multiplier;
+    double tube_full_credit_fraction;
 
     [[nodiscard]] static VocalPieProfile default_profile();
+    [[nodiscard]] static VocalPieProfile fortnite_karaoke();
     [[nodiscard]] static VocalPieProfile rb3_default();
 };
 
@@ -29,6 +31,12 @@ struct VocalPieSegment {
     SightRead::Beat end;
     double normal_units;
     double perfect_units;
+    std::size_t tube_index;
+    SightRead::Beat tube_start;
+    SightRead::Beat tube_end;
+    double tube_normal_units;
+    double tube_perfect_units;
+    double tube_full_credit_fraction;
 };
 
 struct VocalPhrasePie {
@@ -44,6 +52,9 @@ struct VocalPhrasePie {
     [[nodiscard]] double required_prefill(SightRead::Beat start) const;
     [[nodiscard]] double boosted_fraction(SightRead::Beat active_start,
                                           SightRead::Beat active_end) const;
+    [[nodiscard]] std::optional<SightRead::Beat>
+    position_for_fill(SightRead::Beat start, double target_fraction,
+                      bool perfect_vibrato = true) const;
 };
 
 struct VocalActivationWindow {
@@ -93,6 +104,7 @@ private:
     SightRead::TempoMap m_tempo_map;
     SpTimeMap m_time_map;
     SpEngineValues m_sp_engine_values;
+    bool m_uses_karaoke_rules;
     double m_sp_drain_rate;
     bool m_active_sp_pickup_requires_phrase_start;
     std::vector<VocalPhraseInfo> m_phrases;
@@ -124,6 +136,10 @@ public:
     {
         return m_sp_engine_values;
     }
+    [[nodiscard]] bool uses_karaoke_rules() const
+    {
+        return m_uses_karaoke_rules;
+    }
     [[nodiscard]] double sp_drain_rate() const { return m_sp_drain_rate; }
     [[nodiscard]] bool active_sp_pickup_requires_phrase_start() const
     {
@@ -141,6 +157,9 @@ public:
                       const VocalPath& path) const;
     [[nodiscard]] std::string
     path_summary(const VocalPath& path,
+                 VocalPathNotation notation = VocalPathNotation::Rbpv) const;
+    [[nodiscard]] std::string
+    squeeze_text(const VocalActivation& activation,
                  VocalPathNotation notation = VocalPathNotation::Rbpv) const;
 };
 

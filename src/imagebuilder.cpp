@@ -735,6 +735,47 @@ void ImageBuilder::add_sp_acts(const VocalPath& path)
     }
 }
 
+void ImageBuilder::add_vocal_squeeze_guides(const VocalsProcessedSong& song,
+                                            const VocalPath& path,
+                                            VocalPathNotation notation)
+{
+    if (!song.uses_karaoke_rules()) {
+        return;
+    }
+
+    for (const auto& act : path.activations) {
+        const auto label = song.squeeze_text(act, notation);
+        if (label.empty() || act.start_phrase_index >= song.phrases().size()) {
+            continue;
+        }
+
+        const auto& phrase = song.phrases().at(act.start_phrase_index);
+        const auto no_sing_start = phrase.pie.position_for_fill(
+            phrase.start, act.required_prefill_fraction, false);
+        if (!no_sing_start.has_value()
+            || no_sing_start->value() >= act.start.value()) {
+            continue;
+        }
+
+        // Red guide ranges show only the tube portions to skip for Karaoke
+        // ESF/ESP setup; gaps stay clear so the chart remains readable.
+        for (const auto& tube : m_vocal_tubes) {
+            const auto start = std::max(tube.start, no_sing_start->value());
+            const auto end = std::min(tube.end, act.start.value());
+            if (start >= end) {
+                continue;
+            }
+            m_vocal_no_sing_ranges.push_back(
+                {.start = start,
+                 .end = end,
+                 .pitch = tube.pitch,
+                 .type = tube.type});
+        }
+        m_vocal_squeeze_labels.push_back(
+            {.beat = act.start.value(), .text = label});
+    }
+}
+
 void ImageBuilder::add_sp_percent_values(const SpData& sp_data,
                                          const SpTimeMap& time_map,
                                          const PointSet& points,
@@ -1043,6 +1084,8 @@ ImageBuilder make_builder(SightRead::Song& song,
                                            settings.vocal_path_notation)
                   .c_str());
         builder.add_sp_acts(path);
+        builder.add_vocal_squeeze_guides(processed_track, path,
+                                         settings.vocal_path_notation);
         builder.activation_opacity() = settings.opacity;
     }
 

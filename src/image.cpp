@@ -233,6 +233,8 @@ public:
     void draw_score_totals(const ImageBuilder& builder);
     void draw_tempos(const ImageBuilder& builder);
     void draw_time_sigs(const ImageBuilder& builder);
+    void draw_vocal_no_sing_ranges(const ImageBuilder& builder);
+    void draw_vocal_squeeze_labels(const ImageBuilder& builder);
     void draw_version();
 
     void save(const char* filename) const { m_image.save(filename); }
@@ -425,6 +427,8 @@ void ImageImpl::draw_notes(const ImageBuilder& builder)
 {
     if (is_vocals_track(builder)) {
         draw_vocal_tubes(builder);
+        draw_vocal_no_sing_ranges(builder);
+        draw_vocal_squeeze_labels(builder);
         draw_vocal_lyrics(builder);
         return;
     }
@@ -456,6 +460,35 @@ void ImageImpl::draw_vocal_tubes(const ImageBuilder& builder)
             : GREY;
         colour_beat_range(builder, colour, {tube.start, tube.end},
                           vocal_y_range(builder, tube), TUBE_OPACITY);
+    }
+}
+
+void ImageImpl::draw_vocal_no_sing_ranges(const ImageBuilder& builder)
+{
+    constexpr std::array<unsigned char, 3> RED {255, 0, 0};
+    constexpr float NO_SING_OPACITY = 0.55F;
+
+    // ImageBuilder already clipped these ranges to vocal tube geometry.
+    for (const auto& range : builder.vocal_no_sing_ranges()) {
+        const DrawnVocalTube tube {.start = range.start,
+                                   .end = range.end,
+                                   .pitch = range.pitch,
+                                   .type = range.type,
+                                   .is_sp_phrase = false};
+        colour_beat_range(builder, RED, {range.start, range.end},
+                          vocal_y_range(builder, tube), NO_SING_OPACITY);
+    }
+}
+
+void ImageImpl::draw_vocal_squeeze_labels(const ImageBuilder& builder)
+{
+    constexpr std::array<unsigned char, 3> BLACK {0, 0, 0};
+    constexpr int LABEL_OFFSET = -FONT_HEIGHT - 4;
+
+    for (const auto& label : builder.vocal_squeeze_labels()) {
+        auto [x, y] = get_xy(builder, label.beat);
+        m_image.draw_text(x, y + LABEL_OFFSET, "%s", BLACK.data(), 0, 1.0,
+                          FONT_HEIGHT, label.text.c_str());
     }
 }
 
