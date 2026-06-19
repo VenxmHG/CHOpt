@@ -2,16 +2,21 @@ cmake_minimum_required(VERSION 3.30.0)
 
 project(
   chopt
-  VERSION 1.13.1
+  VERSION 1.13.0
   DESCRIPTION "A program to generate optimal Star Power paths for Clone Hero"
   LANGUAGES CXX)
 
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake;${CMAKE_MODULE_PATH}")
 include(cmake/Sanitisers.cmake)
 
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+# Require standard C++20
+function(set_cpp_standard target)
+  set_target_properties(
+    ${target}
+    PROPERTIES CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF)
+endfunction()
 
 # Set warning flags
 function(set_warnings target)
@@ -44,6 +49,25 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 add_subdirectory("extern/sightread")
 
+function(configure_msvc_dependency_linking target)
+  if(MSVC AND TARGET ${target})
+    # Keep Boost linkage explicit in MSVC builds; CMake already wires the
+    # imported targets and Boost auto-linking can pick different libraries.
+    target_compile_definitions(${target} PRIVATE BOOST_ALL_NO_LIB)
+  endif()
+endfunction()
+
+function(disable_vcpkg_msbuild_integration target)
+  if(MSVC AND TARGET ${target})
+    # These targets are already configured through the active CMake toolchain.
+    # Disabling the VS vcpkg hook avoids a second dependency resolution pass.
+    set_target_properties(${target} PROPERTIES VS_GLOBAL_VcpkgEnabled false)
+  endif()
+endfunction()
+
+configure_msvc_dependency_linking(sightread)
+disable_vcpkg_msbuild_integration(sightread)
+
 include(CheckPIESupported)
 check_pie_supported(OUTPUT_VARIABLE output LANGUAGES CXX)
 
@@ -65,17 +89,21 @@ add_executable(
   src/sp.cpp
   src/sptimemap.cpp
   src/stringutil.cpp
+  src/vocals.cpp
   resources/chopt.exe.manifest
   resources/resources.qrc
   resources/resources.rc)
 target_include_directories(
   chopt PRIVATE "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/libs" ${PNG_INCLUDE_DIRS})
 target_link_libraries(chopt PRIVATE ${PNG_LIBRARIES} Boost::locale Qt6::Core Qt6::Gui sightread)
+configure_msvc_dependency_linking(chopt)
+disable_vcpkg_msbuild_integration(chopt)
 
 set_property(TARGET chopt PROPERTY POSITION_INDEPENDENT_CODE FALSE)
 if(APPLE)
   set_property(TARGET chopt PROPERTY MACOSX_BUNDLE TRUE)
 endif()
+set_cpp_standard(chopt)
 set_warnings(chopt)
 enable_sanitisers(chopt)
 
@@ -98,18 +126,23 @@ if(BUILD_GUI)
     src/sp.cpp
     src/sptimemap.cpp
     src/stringutil.cpp
+    src/vocals.cpp
     resources/choptgui.exe.manifest
     resources/resources.qrc
     resources/resources.rc)
   target_include_directories(
     choptgui PRIVATE "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/libs" ${PNG_INCLUDE_DIRS})
   target_link_libraries(choptgui PRIVATE ${PNG_LIBRARIES} Boost::locale Qt6::Widgets sightread)
+  configure_msvc_dependency_linking(choptgui)
+  disable_vcpkg_msbuild_integration(choptgui)
 
   set_property(TARGET choptgui PROPERTY POSITION_INDEPENDENT_CODE FALSE)
 
   if(APPLE)
     set_property(TARGET choptgui PROPERTY MACOSX_BUNDLE TRUE)
   endif()
+
+  set_cpp_standard(choptgui)
 endif()
 
 include(CTest)
@@ -127,21 +160,35 @@ if(PACKAGE_TESTS)
     tests/processed_unittest.cpp
     tests/sp_unittest.cpp
     tests/stringutil_unittest.cpp
+    tests/vocals_unittest.cpp
     src/imagebuilder.cpp
     src/optimiser.cpp
     src/points.cpp
     src/processed.cpp
     src/settings.cpp
+    src/songfile.cpp
     src/sp.cpp
     src/sptimemap.cpp
-    src/stringutil.cpp)
+    src/stringutil.cpp
+    src/vocals.cpp)
 
   target_include_directories(chopt_tests
     PRIVATE "${PROJECT_SOURCE_DIR}/include")
-  target_link_libraries(chopt_tests PRIVATE Boost::locale Boost::unit_test_framework Qt6::Core sightread)
+  target_link_libraries(chopt_tests PRIVATE Boost::locale Qt6::Core sightread)
+  configure_msvc_dependency_linking(chopt_tests)
+  if(TARGET Boost::unit_test_framework)
+    target_link_libraries(chopt_tests PRIVATE Boost::unit_test_framework)
+  endif()
   add_test(NAME chopt_tests COMMAND chopt_tests)
+  set_cpp_standard(chopt_tests)
   set_warnings(chopt_tests)
   enable_sanitisers(chopt_tests)
+endif()
+
+option(BUILD_FUZZ_TARGETS "Build the fuzzing targets" OFF)
+
+if(BUILD_FUZZ_TARGETS)
+  add_subdirectory(fuzzing_targets)
 endif()
 
 option(ENABLE_LTO "Enable Link Time Optimisation" OFF)

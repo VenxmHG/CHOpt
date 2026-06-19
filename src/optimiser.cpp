@@ -26,7 +26,7 @@ Optimiser::Optimiser(const ProcessedSong* song,
                      SightRead::Second whammy_delay)
     : m_song {song}
     , m_terminate {terminate}
-    , m_drum_fill_delay {BASE_DRUM_FILL_DELAY / speed}
+    , m_drum_fill_delay {m_song->drum_fill_delay() * (100.0 / speed)}
     , m_whammy_delay {whammy_delay}
 {
     if (m_song == nullptr || m_terminate == nullptr) {
@@ -243,15 +243,23 @@ void Optimiser::complete_subpath(
 SightRead::Second Optimiser::earliest_fill_appearance(CacheKey key,
                                                       bool has_full_sp) const
 {
-    if (!m_song->is_drums() || has_full_sp) {
+    if (!m_song->is_drums()) {
+        return SightRead::Second(0.0);
+    }
+
+    if (has_full_sp) {
         return SightRead::Second(0.0);
     }
 
     int sp_count = 0;
+    const auto activation_phrase_count = m_song->drum_activation_phrase_count();
     for (auto p = key.point; p < m_song->points().cend(); ++p) {
         if (p->is_sp_granting_note) {
             ++sp_count;
-            if (sp_count == 2) {
+            if (sp_count == activation_phrase_count) {
+                if (m_song->drum_fill_measure_delay().has_value()) {
+                    return m_song->drum_fill_delay_bounds(p).first;
+                }
                 return m_song->sp_time_map().to_seconds(
                            p->hit_window_start.beat)
                     + m_drum_fill_delay;
@@ -278,9 +286,11 @@ Optimiser::CacheValue Optimiser::find_best_subpaths(CacheKey key, Cache& cache,
     auto best_score_boost = 0;
 
     for (auto p = key.point; p < m_song->points().cend(); ++p) {
+        const auto fill_delay_position = p->fill_delay_position.value_or(
+            p->fill_start.value_or(SightRead::Second {0.0}));
         if (m_song->is_drums()
             && (!p->fill_start.has_value()
-                || p->fill_start < early_act_bound)) {
+                || fill_delay_position < early_act_bound)) {
             continue;
         }
         SpBar sp_bar {1.0, 1.0, m_song->sp_engine_values()};

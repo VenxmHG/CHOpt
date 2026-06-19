@@ -65,7 +65,7 @@ void append_sustain_point(OutputIt points, SpPosition position, int value,
     if (!max_start.has_value()) {
         max_start = position;
     }
-    *points++ = {position, *start, *end, *max_start, {},
+    *points++ = {position, *start, *end, *max_start, {}, {},
                  value,    value,  true, false,      false};
 }
 
@@ -309,6 +309,7 @@ void append_note_points(std::vector<SightRead::Note>::const_iterator note,
         .max_sqz_hit_window_start
         = {.beat = early_max_sqz_beat, .sp_measure = early_max_sqz_meas},
         .fill_start = {},
+        .fill_delay_position = {},
         .value = note_value * chord_size,
         .base_value = note_value * chord_size,
         .is_hold_point = false,
@@ -362,7 +363,8 @@ std::vector<Point>::iterator closest_point(std::vector<Point>& points,
 }
 
 void add_drum_activation_points(const SightRead::NoteTrack& track,
-                                std::vector<Point>& points)
+                                std::vector<Point>& points,
+                                const Engine& engine)
 {
     if (points.empty()) {
         return;
@@ -373,6 +375,22 @@ void add_drum_activation_points(const SightRead::NoteTrack& track,
         const auto fill_end = tempo_map.to_beats(fill.position + fill.length);
         const auto best_point = closest_point(points, fill_end);
         best_point->fill_start = tempo_map.to_seconds(fill_start);
+        auto delay_position = fill_start;
+        if (engine.drum_fill_delay_anchor()
+            == DrumFillDelayAnchor::FirstPointAfterFillStart) {
+            const auto first_after_start = std::find_if(
+                points.cbegin(), points.cend(), [&](const auto& point) {
+                    return !point.is_hold_point
+                        && point.position.beat > fill_start;
+                });
+            if (first_after_start != points.cend()) {
+                delay_position = first_after_start->position.beat;
+            } else {
+                delay_position = best_point->position.beat;
+            }
+        }
+        best_point->fill_delay_position
+            = tempo_map.to_seconds(delay_position);
     }
 }
 
@@ -515,12 +533,17 @@ std::vector<Point> unmultiplied_points(const SightRead::NoteTrack& track,
             && ((q == notes.cend())
                 || !phrase_contains_pos(*current_phrase, q->position))) {
             is_note_sp_ender = true;
-            is_unison_sp_ender = std::ranges::any_of(
-                duration_data.unison_phrases, [&](const auto& phrase) {
-                    return std::tie(phrase.position, phrase.length)
-                        == std::tie(current_phrase->position,
-                                    current_phrase->length);
-                });
+            if (pathing_settings.engine->has_unison_bonuses()
+                && std::ranges::find_if(
+                       duration_data.unison_phrases,
+                       [&](const auto& phrase) {
+                           return std::tie(phrase.position, phrase.length)
+                               == std::tie(current_phrase->position,
+                                           current_phrase->length);
+                       })
+                    != duration_data.unison_phrases.cend()) {
+                is_unison_sp_ender = true;
+            }
         }
         append_note_points(p, notes, std::back_inserter(points),
                            duration_data.time_map,
@@ -656,7 +679,7 @@ std::vector<Point> points_from_track(const SightRead::NoteTrack& track,
 {
     auto points = unmultiplied_points(track, duration_data, pathing_settings);
     if (track.track_type() == SightRead::TrackType::Drums) {
-        add_drum_activation_points(track, points);
+        add_drum_activation_points(track, points, *pathing_settings.engine);
     }
     apply_multiplier(points, *pathing_settings.engine);
     shift_points_by_video_lag(points, duration_data.time_map,

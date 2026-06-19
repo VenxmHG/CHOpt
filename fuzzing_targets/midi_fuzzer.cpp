@@ -1,6 +1,6 @@
 /*
  * CHOpt - Star Power optimiser for Clone Hero
- * Copyright (C) 2022 Raymond Wright
+ * Copyright (C) 2021 Raymond Wright
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,25 +16,19 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef CHOPT_JSON_SETTINGS_HPP
-#define CHOPT_JSON_SETTINGS_HPP
+#include <cstddef>
 
-#include <string>
-#include <string_view>
+#include <sightread/songparts.hpp>
 
-struct JsonSettings {
-    int squeeze;
-    int early_whammy;
-    int lazy_whammy;
-    int whammy_delay;
-    int video_lag;
-    bool is_lefty_flip;
-    bool scorehero_vocal_notation;
-    std::string last_directory;
-};
+#include "midi.hpp"
 
-JsonSettings load_saved_settings(std::string_view application_dir);
-void save_settings(const JsonSettings& settings,
-                   std::string_view application_dir);
-
-#endif
+extern "C" int LLVMFuzzerTestOneInput(const char* data, size_t size)
+{
+    const std::vector<std::uint8_t> input {data, data + size};
+    try {
+        SightRead::Detail::parse_midi(input);
+        return 0;
+    } catch (const ParseError&) {
+        return 0;
+    }
+}

@@ -126,7 +126,6 @@ private:
     };
 
     static constexpr double NEG_INF = -std::numeric_limits<double>::infinity();
-    static constexpr double BASE_DRUM_FILL_DELAY = 2.0 * 100;
     const ProcessedSong* m_song;
     const std::atomic<bool>* m_terminate;
     SightRead::Second m_drum_fill_delay;

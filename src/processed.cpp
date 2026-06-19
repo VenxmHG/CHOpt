@@ -17,6 +17,7 @@
  */
 
 #include <cassert>
+#include <cmath>
 #include <iomanip>
 #include <iterator>
 #include <sstream>
@@ -141,13 +142,25 @@ SpBar ProcessedSong::sp_from_phrases(PointPtr begin, PointPtr end) const
     return sp_bar;
 }
 
+int ProcessedSong::drum_activation_phrase_count() const
+{
+    assert(m_sp_engine_values.phrase_amount > 0.0); // NOLINT
+    const auto phrase_count = std::lround(m_sp_engine_values.minimum_to_activate
+                                          / m_sp_engine_values.phrase_amount);
+    return std::max(1, static_cast<int>(phrase_count));
+}
+
 ProcessedSong::ProcessedSong(const SightRead::NoteTrack& track,
                              const SpDurationData& duration_data,
                              const PathingSettings& pathing_settings)
-    : m_time_map {duration_data.time_map}
+    : m_tempo_map {track.global_data().tempo_map()}
+    , m_time_map {duration_data.time_map}
     , m_points {track, duration_data, pathing_settings}
     , m_sp_data {track, duration_data, pathing_settings}
     , m_sp_engine_values {pathing_settings.engine->sp_engine_values()}
+    , m_drum_fill_delay {pathing_settings.engine->drum_fill_delay()}
+    , m_drum_fill_measure_delay {pathing_settings.engine
+                                     ->drum_fill_measure_delay()}
     , m_total_bre_boost {bre_boost(track, *pathing_settings.engine)}
     , m_base_score {track.base_score(pathing_settings.drum_settings)}
     , m_ignore_average_multiplier {pathing_settings.engine
@@ -176,6 +189,23 @@ ProcessedSong::ProcessedSong(const SightRead::NoteTrack& track,
               });
         m_phrase_note_spans.push_back({.begin = start, .end = end});
     }
+}
+
+std::pair<SightRead::Second, SightRead::Second>
+ProcessedSong::drum_fill_delay_bounds(PointPtr sp_granting_point) const
+{
+    if (m_drum_fill_measure_delay.has_value()) {
+        const auto fill_measure
+            = m_tempo_map.to_measures(sp_granting_point->position.beat)
+            + *m_drum_fill_measure_delay;
+        const auto fill_time = m_tempo_map.to_seconds(fill_measure);
+        return {fill_time, fill_time};
+    }
+
+    return {m_time_map.to_seconds(sp_granting_point->hit_window_start.beat)
+                + m_drum_fill_delay,
+            m_time_map.to_seconds(sp_granting_point->hit_window_end.beat)
+                + m_drum_fill_delay};
 }
 
 SpBar ProcessedSong::total_available_sp(
@@ -524,38 +554,40 @@ ProcessedSong::drum_act_summaries(const Path& path) const
 {
     std::vector<std::string> activation_summaries;
     auto start_point = m_points.cbegin();
+    const auto activation_phrase_count = drum_activation_phrase_count();
+    const auto fill_delay_position = [](const Point& point) {
+        return point.fill_delay_position.value_or(
+            point.fill_start.value_or(SightRead::Second {0.0}));
+    };
     for (const auto& act : path.activations) {
         int sp_count = 0;
-        while (sp_count < 2) {
+        while (sp_count < activation_phrase_count) {
             if (start_point->is_sp_granting_note) {
                 ++sp_count;
             }
             ++start_point;
         }
-        const auto early_fill_point
-            = m_time_map.to_seconds(
-                  std::prev(start_point)->hit_window_start.beat)
-            + SightRead::Second(2.0);
-        const auto late_fill_point
-            = m_time_map.to_seconds(std::prev(start_point)->hit_window_end.beat)
-            + SightRead::Second(2.0);
+        const auto [early_fill_point, late_fill_point]
+            = drum_fill_delay_bounds(std::prev(start_point));
+        const auto is_fill_active = [&](const Point& p) {
+            return p.fill_start.has_value()
+                && fill_delay_position(p) >= early_fill_point;
+        };
         const auto skipped_fills
             = std::count_if(start_point, act.act_start, [&](const auto& p) {
-                  return p.fill_start.has_value()
-                      && *p.fill_start >= early_fill_point;
+                  return is_fill_active(p);
               });
-        const auto act_start_fill_start = act.act_start->fill_start;
-        assert(act_start_fill_start.has_value()); // NOLINT
-        if (skipped_fills == 0 && late_fill_point > *act_start_fill_start) {
+        assert(act.act_start->fill_start.has_value()); // NOLINT
+        if (skipped_fills == 0
+            && late_fill_point > fill_delay_position(*act.act_start)) {
             activation_summaries.emplace_back("0(E)");
         } else if (skipped_fills > 0) {
-            while (!start_point->fill_start.has_value()) {
+            while (!is_fill_active(*start_point)) {
                 ++start_point;
             }
-            const auto fill_start = start_point->fill_start;
-            assert(fill_start.has_value()); // NOLINT
-            if (late_fill_point > *fill_start
-                && early_fill_point < *fill_start) {
+            const auto fill_position = fill_delay_position(*start_point);
+            if (late_fill_point > fill_position
+                && early_fill_point < fill_position) {
                 activation_summaries.push_back(std::to_string(skipped_fills - 1)
                                                + "(L)");
             } else {

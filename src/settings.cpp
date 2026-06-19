@@ -87,13 +87,25 @@ SightRead::Instrument string_to_inst(std::string_view text, Game game)
         return SightRead::Instrument::Drums;
     }
     if (text == "vocals") {
+        if (game == Game::RockBand || game == Game::RockBandThree) {
+            return SightRead::Instrument::Vocals;
+        }
         return SightRead::Instrument::FortniteVocals;
+    }
+    if (text == "karaoke") {
+        if (game == Game::FortniteFestival) {
+            return SightRead::Instrument::Vocals;
+        }
+        throw std::invalid_argument("karaoke is only available for fnf");
     }
     if (text == "proguitar") {
         return SightRead::Instrument::FortniteProGuitar;
     }
     if (text == "probass") {
         return SightRead::Instrument::FortniteProBass;
+    }
+    if (text == "prodrums") {
+        return SightRead::Instrument::FortniteProDrums;
     }
     throw std::invalid_argument("Unrecognised instrument");
 }
@@ -129,7 +141,8 @@ std::unique_ptr<QCommandLineParser> arg_parser()
           "expert"},
          {{"i", "instrument"},
           "Instrument, options are guitar, coop, bass, rhythm, keys, ghl, "
-          "ghlbass, ghlrhythm, ghlcoop, drums, vocals, proguitar, probass. "
+          "ghlbass, ghlrhythm, ghlcoop, drums, vocals, karaoke, proguitar, "
+          "probass, prodrums. "
           "Default guitar.",
           "instrument",
           "guitar"},
@@ -170,6 +183,8 @@ std::unique_ptr<QCommandLineParser> arg_parser()
          {"no-bpms", "Do not draw BPMs."},
          {"no-solos", "Do not draw solo sections."},
          {"no-time-sigs", "Do not draw time signatures."},
+         {"scorehero-vocal-paths",
+          "Use old ScoreHero notation for vocal and Karaoke paths."},
          {"act-opacity",
           "Opacity of drawn activations (0.0 to 1.0). Default 0.33.",
           "act-opacity", "0.33"}});
@@ -197,6 +212,12 @@ game_to_engine(Game game, SightRead::Instrument instrument, bool precision_mode)
             || instrument == SightRead::Instrument::FortniteProBass) {
             return std::make_unique<FortniteBassEngine>();
         }
+        if (instrument == SightRead::Instrument::FortniteProDrums) {
+            return std::make_unique<FortniteProDrumsEngine>();
+        }
+        if (instrument == SightRead::Instrument::Vocals) {
+            return std::make_unique<FortniteKaraokeEngine>();
+        }
         if (instrument == SightRead::Instrument::FortniteVocals) {
             return std::make_unique<FortniteVocalsEngine>();
         }
@@ -208,11 +229,17 @@ game_to_engine(Game game, SightRead::Instrument instrument, bool precision_mode)
     case Game::GuitarHeroThree:
         return std::make_unique<Gh3Engine>();
     case Game::RockBand:
+        if (instrument == SightRead::Instrument::Vocals) {
+            return std::make_unique<RbEngine>();
+        }
         if (instrument == SightRead::Instrument::Bass) {
             return std::make_unique<RbBassEngine>();
         }
         return std::make_unique<RbEngine>();
     case Game::RockBandThree:
+        if (instrument == SightRead::Instrument::Vocals) {
+            return std::make_unique<RbEngine>();
+        }
         if (instrument == SightRead::Instrument::Bass) {
             return std::make_unique<Rb3BassEngine>();
         }
@@ -263,6 +290,14 @@ Settings from_args(const QStringList& args, QTextStream& std_err)
     settings.difficulty = string_to_diff(parser->value("diff").toStdString());
     settings.instrument = string_to_inst(
         parser->value("instrument").toStdString(), settings.game);
+    if (settings.instrument == SightRead::Instrument::Vocals
+        && settings.difficulty != SightRead::Difficulty::Expert) {
+        if (settings.game == Game::FortniteFestival) {
+            throw std::invalid_argument(
+                "Fortnite Festival Karaoke is Expert-only in this release");
+        }
+        throw std::invalid_argument("Vocals is Expert-only in this release");
+    }
 
     const auto precision_mode = parser->isSet("precision-mode");
     settings.pathing_settings.engine
@@ -279,6 +314,10 @@ Settings from_args(const QStringList& args, QTextStream& std_err)
     settings.draw_bpms = !parser->isSet("no-bpms");
     settings.draw_solos = !parser->isSet("no-solos");
     settings.draw_time_sigs = !parser->isSet("no-time-sigs");
+    settings.vocal_path_notation
+        = parser->isSet("scorehero-vocal-paths")
+        ? VocalPathNotation::ScoreHero
+        : VocalPathNotation::Rbpv;
     settings.pathing_settings.drum_settings.enable_double_kick
         = !parser->isSet("no-double-kick");
     settings.pathing_settings.drum_settings.disable_kick

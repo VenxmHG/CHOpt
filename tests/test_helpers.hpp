@@ -217,6 +217,39 @@ inline PathingSettings default_fortnite_guitar_pathing_settings()
             SightRead::DrumSettings::default_settings()};
 }
 
+inline PathingSettings default_fortnite_pro_drums_pathing_settings()
+{
+    return {std::make_unique<FortniteProDrumsEngine>(),
+            1.0,
+            1.0,
+            SightRead::Second {0.0},
+            SightRead::Second {0.0},
+            SightRead::Second {0.0},
+            {false, false, true}};
+}
+
+inline PathingSettings default_karaoke_pathing_settings()
+{
+    return {std::make_unique<FortniteKaraokeEngine>(),
+            1.0,
+            1.0,
+            SightRead::Second {0.0},
+            SightRead::Second {0.0},
+            SightRead::Second {0.0},
+            SightRead::DrumSettings::default_settings()};
+}
+
+inline PathingSettings default_rb_vocals_pathing_settings()
+{
+    return {std::make_unique<RbEngine>(),
+            1.0,
+            1.0,
+            SightRead::Second {0.0},
+            SightRead::Second {0.0},
+            SightRead::Second {0.0},
+            SightRead::DrumSettings::default_settings()};
+}
+
 inline PathingSettings default_gh1_pathing_settings()
 {
     return {std::make_unique<Gh1Engine>(),
