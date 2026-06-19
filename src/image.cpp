@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <algorithm>
 #include <cassert>
 #include <climits>
 #include <cmath>
@@ -34,8 +35,8 @@
 using namespace cimg_library;
 
 constexpr int VERSION_MAJOR = 1;
-constexpr int VERSION_MINOR = 13;
-constexpr int VERSION_PATCH = 0;
+constexpr int VERSION_MINOR = 15;
+constexpr int VERSION_PATCH = 2;
 
 constexpr int BEAT_WIDTH = 60;
 constexpr int FONT_HEIGHT = 13;
@@ -186,6 +187,15 @@ std::tuple<int, int> vocal_y_range(const ImageBuilder& builder,
     const auto y_min = std::max(0, centre - BAND_HALF_HEIGHT);
     const auto y_max = std::min(MEASURE_HEIGHT - 1, centre + BAND_HALF_HEIGHT);
     return {y_min, y_max};
+}
+
+int x_offset_for_row_gap(double row_gap)
+{
+    const auto EPSILON = 0.01;
+
+    auto double_offset = LEFT_MARGIN + BEAT_WIDTH * row_gap;
+    double_offset += EPSILON;
+    return static_cast<int>(double_offset);
 }
 }
 
@@ -542,11 +552,11 @@ const QImage& ImageImpl::load_sprite(const QString& path)
 
     const auto [new_it, is_inserted]
         = m_sprite_map.emplace(path, QImage {path});
-    assert(is_inserted); // NOLINT
+    assert(is_inserted);
 
     const auto& image = new_it->second;
-    assert(image.height() > 0); // NOLINT
-    assert(image.width() > 0); // NOLINT
+    assert(image.height() > 0);
+    assert(image.width() > 0);
     return image;
 }
 
@@ -628,15 +638,13 @@ void ImageImpl::colour_beat_range(const ImageBuilder& builder,
     const auto& [y_min, y_max] = y_range;
 
     while (start < end) {
-        auto block_end = std::min(row_iter->end, end);
-        auto x_min = LEFT_MARGIN
-            + static_cast<int>(BEAT_WIDTH * (start - row_iter->start));
-        // -1 is so regions that cross rows do not go over the ending line of a
-        // row.
-        auto x_max = LEFT_MARGIN
-            + static_cast<int>(BEAT_WIDTH * (block_end - row_iter->start)) - 1;
+        const auto block_end = std::min(row_iter->end, end);
+        const auto maximum_row_x = x_offset_for_row_gap(row_iter->end);
+        const auto x_min = x_offset_for_row_gap(start - row_iter->start);
+        auto x_max = x_offset_for_row_gap(block_end - row_iter->start);
+        x_max = std::min(x_max, maximum_row_x);
         if (x_min <= x_max) {
-            auto y = TOP_MARGIN + MARGIN + DIST_BETWEEN_MEASURES * row;
+            const auto y = TOP_MARGIN + MARGIN + DIST_BETWEEN_MEASURES * row;
             m_image.draw_rectangle(x_min, y + y_min, x_max, y + y_max,
                                    colour.data(), opacity);
         }
@@ -677,6 +685,7 @@ Image::Image(const ImageBuilder& builder)
     constexpr std::array<unsigned char, 3> red {255, 0, 0};
     constexpr std::array<unsigned char, 3> solo_blue {0, 51, 128};
     constexpr std::array<unsigned char, 3> pink {127, 0, 0};
+
     constexpr unsigned int IMAGE_WIDTH = 1024;
     constexpr float RANGE_OPACITY = 0.33333F;
     constexpr int SOLO_HEIGHT = 10;

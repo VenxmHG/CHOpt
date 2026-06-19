@@ -30,10 +30,10 @@ double get_beat_rate(const SightRead::TempoMap& tempo_map, SightRead::Beat beat)
 {
     constexpr double BASE_BEAT_RATE = 4.0;
 
-    auto ts = std::find_if(
-        tempo_map.time_sigs().cbegin(), tempo_map.time_sigs().cend(),
-        [=](const auto& x) { return tempo_map.to_beats(x.position) > beat; });
-    if (ts == tempo_map.time_sigs().cbegin()) {
+    auto ts = std::ranges::upper_bound(
+        tempo_map.time_sigs(), beat, std::less {},
+        [&](const auto& x) { return tempo_map.to_beats(x.position); });
+    if (ts == std::ranges::begin(tempo_map.time_sigs())) {
         return BASE_BEAT_RATE;
     }
     --ts;
@@ -44,10 +44,10 @@ int get_numer(const SightRead::TempoMap& tempo_map, SightRead::Beat beat)
 {
     constexpr int BASE_NUMERATOR = 4;
 
-    auto ts = std::find_if(
-        tempo_map.time_sigs().cbegin(), tempo_map.time_sigs().cend(),
-        [=](const auto& x) { return tempo_map.to_beats(x.position) > beat; });
-    if (ts == tempo_map.time_sigs().cbegin()) {
+    auto ts = std::ranges::upper_bound(
+        tempo_map.time_sigs(), beat, std::less {},
+        [&](const auto& x) { return tempo_map.to_beats(x.position); });
+    if (ts == std::ranges::begin(tempo_map.time_sigs())) {
         return BASE_NUMERATOR;
     }
     --ts;
@@ -58,10 +58,10 @@ double get_denom(const SightRead::TempoMap& tempo_map, SightRead::Beat beat)
 {
     constexpr double BASE_BEAT_RATE = 4.0;
 
-    auto ts = std::find_if(
-        tempo_map.time_sigs().cbegin(), tempo_map.time_sigs().cend(),
-        [=](const auto& x) { return tempo_map.to_beats(x.position) > beat; });
-    if (ts == tempo_map.time_sigs().cbegin()) {
+    auto ts = std::ranges::upper_bound(
+        tempo_map.time_sigs(), beat, std::less {},
+        [&](const auto& x) { return tempo_map.to_beats(x.position); });
+    if (ts == std::ranges::begin(tempo_map.time_sigs())) {
         return 1.0;
     }
     --ts;
@@ -94,14 +94,12 @@ DrawnNote note_to_drawn_note(const SightRead::Note& note,
         }
     }
 
-    auto is_sp_note = false;
-    for (const auto& phrase : track.sp_phrases()) {
-        if (note.position >= phrase.position
-            && note.position < phrase.position + phrase.length) {
-            is_sp_note = true;
-            break;
-        }
-    }
+    const auto& phrases = track.sp_phrases();
+    const auto candidate_phrase = std::ranges::upper_bound(
+        phrases, note.position, {},
+        [](const auto& phrase) { return phrase.position + phrase.length; });
+    const auto is_sp_note = candidate_phrase != std::ranges::end(phrases)
+        && note.position >= candidate_phrase->position;
 
     return {.beat = beat.value(),
             .lengths = lengths,
@@ -310,7 +308,7 @@ form_events(const std::vector<double>& measure_lines, const PointSet& points,
          ++it) {
         events.emplace_back(SightRead::Beat {*it}, SpDrainEventType::Measure);
     }
-    for (auto p = points.cbegin(); p < points.cend(); ++p) {
+    for (const auto* p = points.cbegin(); p < points.cend(); ++p) {
         if (!p->is_sp_granting_note) {
             continue;
         }
@@ -397,6 +395,22 @@ void apply_drum_settings(SightRead::NoteTrack& track,
     } else {
         track.disable_cymbals();
         track.disable_dynamics();
+    }
+}
+
+std::vector<SightRead::StarPower>
+song_unison_phrases(const SightRead::Song& song,
+                    UnisonBonusType unison_bonus_type)
+{
+    switch (unison_bonus_type) {
+    case UnisonBonusType::RockBand3:
+        return song.rb3_unison_phrases();
+    case UnisonBonusType::Yarg:
+        return song.yarg_unison_phrases();
+    case UnisonBonusType::None:
+        return {};
+    default:
+        throw std::runtime_error("Invalid UnisonBonusType");
     }
 }
 }
@@ -559,7 +573,7 @@ void ImageBuilder::add_measure_values(const PointSet& points,
     auto base_value_iter = m_base_values.begin();
     auto meas_iter = std::next(m_measure_lines.cbegin());
     auto score_value_iter = m_score_values.begin();
-    for (auto p = points.cbegin(); p < points.cend(); ++p) {
+    for (const auto* p = points.cbegin(); p < points.cend(); ++p) {
         const auto adjusted_p_pos
             = subtract_video_lag(p->position.beat, points.video_lag(),
                                  tempo_map)
@@ -572,7 +586,7 @@ void ImageBuilder::add_measure_values(const PointSet& points,
             ++score_value_iter;
         }
         *base_value_iter += p->base_value;
-        *score_value_iter += p->value;
+        *score_value_iter += p->value + p->clean_play_bonus;
     }
 
     meas_iter = std::next(m_measure_lines.cbegin());
@@ -595,7 +609,7 @@ void ImageBuilder::add_measure_values(const PointSet& points,
     for (const auto& act : path.activations) {
         meas_iter = std::next(m_measure_lines.cbegin());
         score_value_iter = m_score_values.begin();
-        for (auto p = act.act_start; p <= act.act_end; ++p) {
+        for (const auto* p = act.act_start; p <= act.act_end; ++p) {
             while (meas_iter != m_measure_lines.cend()
                    && *meas_iter <= subtract_video_lag(p->position.beat,
                                                        points.video_lag(),
@@ -672,6 +686,9 @@ void ImageBuilder::add_sp_acts(const PointSet& points,
                                const SightRead::TempoMap& tempo_map,
                                const Path& path)
 {
+    // This is so we don't have a pixel of overlap between red and blue ranges.
+    const SightRead::Beat RED_EPSILON {1 / 60.0};
+
     std::vector<std::tuple<double, double>> no_whammy_ranges;
 
     const auto shifted_beat = [&](auto beat) {
@@ -693,14 +710,14 @@ void ImageBuilder::add_sp_acts(const PointSet& points,
                             SightRead::Beat {m_rows.back().end});
         m_blue_ranges.emplace_back(shifted_beat(blue_start).value(),
                                    blue_end.value());
-        if (act.sp_start > act.act_start->position.beat) {
+        if (act.sp_start - RED_EPSILON > act.act_start->position.beat) {
             m_red_ranges.emplace_back(
                 shifted_beat(act.act_start->position.beat).value(),
-                shifted_beat(act.sp_start).value());
+                shifted_beat(act.sp_start - RED_EPSILON).value());
         }
-        if (act.sp_end < act.act_end->position.beat) {
+        if (act.sp_end + RED_EPSILON < act.act_end->position.beat) {
             m_red_ranges.emplace_back(
-                shifted_beat(act.sp_end).value(),
+                shifted_beat(act.sp_end + RED_EPSILON).value(),
                 shifted_beat(act.act_end->position.beat).value());
         }
         no_whammy_ranges.emplace_back(act.whammy_end.value(),
@@ -839,7 +856,7 @@ void ImageBuilder::add_sp_percent_values(const SpData& sp_data,
         total_sp = std::clamp(total_sp, 0.0, 1.0);
     }
 
-    assert(m_sp_percent_values.size() == m_measure_lines.size() - 1); // NOLINT
+    assert(m_sp_percent_values.size() == m_measure_lines.size() - 1);
 }
 
 void ImageBuilder::add_sp_percent_values(const VocalsProcessedSong& song,
@@ -923,8 +940,9 @@ void ImageBuilder::set_total_score(const PointSet& points,
                                    const Path& path)
 {
     auto no_sp_score = std::accumulate(
-        points.cbegin(), points.cend(), 0,
-        [](const auto x, const auto& y) { return x + y.value; });
+        points.cbegin(), points.cend(), 0, [](const auto x, const auto& y) {
+            return x + y.value + y.clean_play_bonus;
+        });
     no_sp_score += std::accumulate(
         solos.cbegin(), solos.cend(), 0,
         [](const auto x, const auto& y) { return x + y.value; });
@@ -983,10 +1001,8 @@ ImageBuilder make_builder(SightRead::Song& song,
 
     const SpTimeMap time_map {tempo_map,
                               settings.pathing_settings.engine->sp_mode()};
-    const auto unison_phrases
-        = (settings.pathing_settings.engine->has_unison_bonuses())
-        ? song.unison_phrases()
-        : std::vector<SightRead::StarPower> {};
+    const auto unison_phrases = song_unison_phrases(
+        song, settings.pathing_settings.engine->unison_bonus_type());
     const SpDurationData duration_data {.time_map = time_map,
                                         .od_beats
                                         = song.global_data().od_beats(),

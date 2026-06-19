@@ -2,21 +2,16 @@ cmake_minimum_required(VERSION 3.30.0)
 
 project(
   chopt
-  VERSION 1.13.0
+  VERSION 1.15.2
   DESCRIPTION "A program to generate optimal Star Power paths for Clone Hero"
   LANGUAGES CXX)
 
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake;${CMAKE_MODULE_PATH}")
 include(cmake/Sanitisers.cmake)
 
-# Require standard C++20
-function(set_cpp_standard target)
-  set_target_properties(
-    ${target}
-    PROPERTIES CXX_STANDARD 20
-    CXX_STANDARD_REQUIRED ON
-    CXX_EXTENSIONS OFF)
-endfunction()
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Set warning flags
 function(set_warnings target)
@@ -40,7 +35,7 @@ find_package(
   OPTIONAL_COMPONENTS Gui Widgets)
 find_package(
   Boost 1.82 REQUIRED
-  COMPONENTS locale
+  COMPONENTS headers locale
   OPTIONAL_COMPONENTS unit_test_framework)
 
 set(CMAKE_AUTOMOC ON)
@@ -103,7 +98,6 @@ set_property(TARGET chopt PROPERTY POSITION_INDEPENDENT_CODE FALSE)
 if(APPLE)
   set_property(TARGET chopt PROPERTY MACOSX_BUNDLE TRUE)
 endif()
-set_cpp_standard(chopt)
 set_warnings(chopt)
 enable_sanitisers(chopt)
 
@@ -141,8 +135,6 @@ if(BUILD_GUI)
   if(APPLE)
     set_property(TARGET choptgui PROPERTY MACOSX_BUNDLE TRUE)
   endif()
-
-  set_cpp_standard(choptgui)
 endif()
 
 include(CTest)
@@ -154,8 +146,10 @@ if(PACKAGE_TESTS)
   add_executable(
     chopt_tests
     tests/test_main.cpp
+    tests/activationendset_unittest.cpp
     tests/imagebuilder_unittest.cpp
     tests/optimiser_unittest.cpp
+    tests/pathgraph_unittest.cpp
     tests/points_unittest.cpp
     tests/processed_unittest.cpp
     tests/sp_unittest.cpp
@@ -180,15 +174,8 @@ if(PACKAGE_TESTS)
     target_link_libraries(chopt_tests PRIVATE Boost::unit_test_framework)
   endif()
   add_test(NAME chopt_tests COMMAND chopt_tests)
-  set_cpp_standard(chopt_tests)
   set_warnings(chopt_tests)
   enable_sanitisers(chopt_tests)
-endif()
-
-option(BUILD_FUZZ_TARGETS "Build the fuzzing targets" OFF)
-
-if(BUILD_FUZZ_TARGETS)
-  add_subdirectory(fuzzing_targets)
 endif()
 
 option(ENABLE_LTO "Enable Link Time Optimisation" OFF)

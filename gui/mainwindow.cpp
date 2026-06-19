@@ -213,6 +213,8 @@ QString instrument_name(Game game, SightRead::Instrument instrument)
         return "GHL Rhythm";
     case SightRead::Instrument::GHLGuitarCoop:
         return "GHL Guitar Co-op";
+    case SightRead::Instrument::GHLKeys:
+        return "GHL Keys";
     case SightRead::Instrument::Drums:
         return "Drums";
     case SightRead::Instrument::FortniteGuitar:

@@ -34,6 +34,17 @@ std::set<SightRead::Instrument> permitted_instruments(Game game)
 {
     switch (game) {
     case Game::CloneHero:
+        return {SightRead::Instrument::Guitar,
+                SightRead::Instrument::GuitarCoop,
+                SightRead::Instrument::Bass,
+                SightRead::Instrument::Rhythm,
+                SightRead::Instrument::Keys,
+                SightRead::Instrument::GHLGuitar,
+                SightRead::Instrument::GHLBass,
+                SightRead::Instrument::GHLRhythm,
+                SightRead::Instrument::GHLGuitarCoop,
+                SightRead::Instrument::GHLKeys,
+                SightRead::Instrument::Drums};
     case Game::Yarg:
         return {SightRead::Instrument::Guitar,
                 SightRead::Instrument::GuitarCoop,
@@ -70,19 +81,40 @@ std::set<SightRead::Instrument> permitted_instruments(Game game)
     }
 }
 
-bool parse_solos(Game game)
+SightRead::SoloParsingBehaviour solo_parsing_behaviour(Game game)
 {
-    constexpr std::array NO_SOLO_GAMES {
-        Game::GuitarHeroOne, Game::GuitarHeroTwo, Game::GuitarHeroThree,
-        Game::FortniteFestival};
-
-    return std::ranges::find(NO_SOLO_GAMES, game)
-        == std::ranges::end(NO_SOLO_GAMES);
+    switch (game) {
+    case Game::CloneHero:
+        return SightRead::SoloParsingBehaviour::PreferLaterStarts;
+    case Game::RockBand:
+    case Game::RockBandThree:
+    case Game::Yarg:
+        return SightRead::SoloParsingBehaviour::PreferEarlierStarts;
+    case Game::FortniteFestival:
+    case Game::GuitarHeroOne:
+    case Game::GuitarHeroTwo:
+    case Game::GuitarHeroThree:
+        return SightRead::SoloParsingBehaviour::NoSolos;
+    default:
+        throw std::invalid_argument("Invalid Game");
+    }
 }
 
-bool allow_open_chords(Game game) { return game == Game::Yarg; }
+bool parse_solos(Game game)
+{
+    return solo_parsing_behaviour(game)
+        != SightRead::SoloParsingBehaviour::NoSolos;
+}
 
-bool use_sustain_cutoff_threshold(Game game) { return game == Game::Yarg; }
+bool allow_open_chords(Game game)
+{
+    return game == Game::CloneHero || game == Game::Yarg;
+}
+
+bool use_sustain_cutoff_threshold(Game game)
+{
+    return game == Game::CloneHero || game == Game::Yarg;
+}
 }
 
 SongFile::SongFile(const std::string& filename)
@@ -138,19 +170,19 @@ SightRead::Song SongFile::load_song(Game game) const
             reinterpret_cast<const char*>(m_loaded_file.data()), // NOLINT
             m_loaded_file.size()};
         SightRead::ChartParser parser {m_metadata};
-        parser.permit_instruments(permitted_instruments(game));
-        parser.parse_solos(parse_solos(game));
-        parser.allow_open_chords(allow_open_chords(game));
+        parser.permit_instruments(permitted_instruments(game))
+            .solo_parsing_behaviour(solo_parsing_behaviour(game))
+            .allow_open_chords(allow_open_chords(game));
         return parser.parse(chart);
     }
     case FileType::Midi: {
         std::span<const std::uint8_t> midi_buffer {m_loaded_file.data(),
                                                    m_loaded_file.size()};
         SightRead::MidiParser parser {m_metadata};
-        parser.permit_instruments(permitted_instruments(game));
-        parser.parse_solos(parse_solos(game));
-        parser.allow_open_chords(allow_open_chords(game));
-        parser.use_sustain_cutoff_threshold(use_sustain_cutoff_threshold(game));
+        parser.permit_instruments(permitted_instruments(game))
+            .parse_solos(parse_solos(game))
+            .allow_open_chords(allow_open_chords(game))
+            .use_sustain_cutoff_threshold(use_sustain_cutoff_threshold(game));
         return parser.parse(midi_buffer);
     }
     case FileType::QbMidi: {

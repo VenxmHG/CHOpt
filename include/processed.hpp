@@ -94,6 +94,7 @@ private:
     std::optional<SightRead::Measure> m_drum_fill_measure_delay;
     std::vector<PhrasePointSpan> m_phrase_note_spans;
     int m_total_bre_boost;
+    int m_total_clean_play_boost;
     int m_total_solo_boost;
     int m_base_score;
     bool m_ignore_average_multiplier;

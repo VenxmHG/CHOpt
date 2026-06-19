@@ -32,6 +32,8 @@ enum class SustainRoundingPolicy : std::uint8_t { RoundUp, RoundToNearest };
 
 enum class SustainTicksMetric : std::uint8_t { Beat, Fretbar, OdBeat };
 
+enum class UnisonBonusType : std::uint8_t { None, RockBand3, Yarg };
+
 enum class DrumFillDelayAnchor : std::uint8_t {
     FillStart,
     FirstPointAfterFillStart
@@ -65,12 +67,13 @@ public:
     }
     [[nodiscard]] virtual double burst_size() const = 0;
     [[nodiscard]] virtual bool chords_multiply_sustains() const = 0;
+    [[nodiscard]] virtual int clean_play_bonus() const = 0;
     [[nodiscard]] virtual bool delayed_multiplier() const = 0;
     [[nodiscard]] virtual double early_timing_window(double early_gap,
                                                      double late_gap) const = 0;
     [[nodiscard]] virtual bool has_bres() const = 0;
     [[nodiscard]] virtual bool has_early_whammy() const = 0;
-    [[nodiscard]] virtual bool has_unison_bonuses() const = 0;
+    [[nodiscard]] virtual bool has_whammy_bursts() const = 0;
     [[nodiscard]] virtual bool is_rock_band() const = 0;
     [[nodiscard]] virtual bool ignore_average_multiplier() const = 0;
     [[nodiscard]] virtual double late_timing_window(double early_gap,
@@ -87,6 +90,7 @@ public:
     [[nodiscard]] virtual int sust_points_per_beat() const = 0;
     [[nodiscard]] virtual SustainRoundingPolicy sustain_rounding() const = 0;
     [[nodiscard]] virtual SustainTicksMetric sustain_ticks_metric() const = 0;
+    [[nodiscard]] virtual UnisonBonusType unison_bonus_type() const = 0;
 
     Engine() = default;
     Engine(const Engine&) = delete;
@@ -118,7 +122,7 @@ public:
     }
     [[nodiscard]] bool has_bres() const override { return false; }
     [[nodiscard]] bool has_early_whammy() const override { return true; }
-    [[nodiscard]] bool has_unison_bonuses() const override { return false; }
+    [[nodiscard]] bool has_whammy_bursts() const override { return true; }
     [[nodiscard]] bool ignore_average_multiplier() const override
     {
         return false;
@@ -158,6 +162,10 @@ public:
     {
         return SustainTicksMetric::Beat;
     }
+    [[nodiscard]] UnisonBonusType unison_bonus_type() const override
+    {
+        return UnisonBonusType::None;
+    }
 };
 
 class ChGuitarEngine final : public BaseChEngine {
@@ -169,6 +177,9 @@ protected:
         (void)late_gap;
         return 0.07;
     }
+
+public:
+    [[nodiscard]] int clean_play_bonus() const override { return 2; }
 };
 
 class ChPrecisionGuitarEngine final : public BaseChEngine {
@@ -181,6 +192,9 @@ protected:
         const auto total_gap = early_gap + late_gap;
         return 0.27619 * total_gap + 0.021;
     }
+
+public:
+    [[nodiscard]] int clean_play_bonus() const override { return 2; }
 };
 
 class ChDrumEngine final : public BaseChEngine {
@@ -194,6 +208,9 @@ protected:
         return -2.23425815 * total_gap * total_gap
             + 0.9428571428571415 * total_gap - 0.01;
     }
+
+public:
+    [[nodiscard]] int clean_play_bonus() const override { return 0; }
 };
 
 class ChPrecisionDrumEngine final : public BaseChEngine {
@@ -207,6 +224,9 @@ protected:
         return 2.4961183 * total_gap * total_gap + 0.24961183 * total_gap
             + 0.0065;
     }
+
+public:
+    [[nodiscard]] int clean_play_bonus() const override { return 0; }
 };
 
 class BaseFortniteEngine : public Engine {
@@ -217,6 +237,7 @@ public:
     {
         return true;
     }
+    [[nodiscard]] int clean_play_bonus() const override { return 0; }
     [[nodiscard]] bool delayed_multiplier() const override { return true; }
     [[nodiscard]] double early_timing_window(double early_gap,
                                              double late_gap) const override
@@ -227,7 +248,7 @@ public:
     }
     [[nodiscard]] bool has_bres() const override { return false; }
     [[nodiscard]] bool has_early_whammy() const override { return false; }
-    [[nodiscard]] bool has_unison_bonuses() const override { return false; }
+    [[nodiscard]] bool has_whammy_bursts() const override { return false; }
     [[nodiscard]] bool is_rock_band() const override { return false; }
     [[nodiscard]] bool ignore_average_multiplier() const override
     {
@@ -266,6 +287,10 @@ public:
     [[nodiscard]] SustainTicksMetric sustain_ticks_metric() const override
     {
         return SustainTicksMetric::OdBeat;
+    }
+    [[nodiscard]] UnisonBonusType unison_bonus_type() const override
+    {
+        return UnisonBonusType::None;
     }
 };
 
@@ -317,9 +342,10 @@ public:
     {
         return true;
     }
+    [[nodiscard]] int clean_play_bonus() const override { return 0; }
     [[nodiscard]] bool has_bres() const override { return false; }
     [[nodiscard]] bool has_early_whammy() const override { return true; }
-    [[nodiscard]] bool has_unison_bonuses() const override { return false; }
+    [[nodiscard]] bool has_whammy_bursts() const override { return false; }
     [[nodiscard]] bool ignore_average_multiplier() const override
     {
         return true;
@@ -359,6 +385,10 @@ public:
     [[nodiscard]] SustainTicksMetric sustain_ticks_metric() const override
     {
         return SustainTicksMetric::Beat;
+    }
+    [[nodiscard]] UnisonBonusType unison_bonus_type() const override
+    {
+        return UnisonBonusType::None;
     }
 };
 
@@ -401,6 +431,7 @@ public:
     {
         return false;
     }
+    [[nodiscard]] int clean_play_bonus() const override { return 0; }
     [[nodiscard]] bool delayed_multiplier() const override { return false; }
     [[nodiscard]] double early_timing_window(double early_gap,
                                              double late_gap) const override
@@ -411,7 +442,7 @@ public:
     }
     [[nodiscard]] bool has_bres() const override { return false; }
     [[nodiscard]] bool has_early_whammy() const override { return false; }
-    [[nodiscard]] bool has_unison_bonuses() const override { return false; }
+    [[nodiscard]] bool has_whammy_bursts() const override { return false; }
     [[nodiscard]] bool ignore_average_multiplier() const override
     {
         return true;
@@ -452,6 +483,10 @@ public:
     {
         return SustainTicksMetric::Fretbar;
     }
+    [[nodiscard]] UnisonBonusType unison_bonus_type() const override
+    {
+        return UnisonBonusType::None;
+    }
 };
 
 class BaseRbEngine : public Engine {
@@ -465,6 +500,7 @@ public:
     {
         return true;
     }
+    [[nodiscard]] int clean_play_bonus() const override { return 0; }
     [[nodiscard]] bool delayed_multiplier() const override { return false; }
     [[nodiscard]] double early_timing_window(double early_gap,
                                              double late_gap) const override
@@ -475,6 +511,7 @@ public:
     }
     [[nodiscard]] bool has_bres() const override { return true; }
     [[nodiscard]] bool has_early_whammy() const override { return true; }
+    [[nodiscard]] bool has_whammy_bursts() const override { return false; }
     [[nodiscard]] bool ignore_average_multiplier() const override
     {
         return true;
@@ -521,8 +558,11 @@ protected:
     [[nodiscard]] double base_timing_window() const override { return 0.1; }
 
 public:
-    [[nodiscard]] bool has_unison_bonuses() const override { return false; }
     [[nodiscard]] int max_multiplier() const override { return 4; }
+    [[nodiscard]] UnisonBonusType unison_bonus_type() const override
+    {
+        return UnisonBonusType::None;
+    }
 };
 
 class RbBassEngine final : public BaseRbEngine {
@@ -530,8 +570,11 @@ protected:
     [[nodiscard]] double base_timing_window() const override { return 0.1; }
 
 public:
-    [[nodiscard]] bool has_unison_bonuses() const override { return false; }
     [[nodiscard]] int max_multiplier() const override { return 6; }
+    [[nodiscard]] UnisonBonusType unison_bonus_type() const override
+    {
+        return UnisonBonusType::None;
+    }
 };
 
 class Rb3Engine final : public BaseRbEngine {
@@ -539,8 +582,11 @@ protected:
     [[nodiscard]] double base_timing_window() const override { return 0.1; }
 
 public:
-    [[nodiscard]] bool has_unison_bonuses() const override { return true; }
     [[nodiscard]] int max_multiplier() const override { return 4; }
+    [[nodiscard]] UnisonBonusType unison_bonus_type() const override
+    {
+        return UnisonBonusType::RockBand3;
+    }
 };
 
 class Rb3BassEngine final : public BaseRbEngine {
@@ -548,8 +594,11 @@ protected:
     [[nodiscard]] double base_timing_window() const override { return 0.1; }
 
 public:
-    [[nodiscard]] bool has_unison_bonuses() const override { return true; }
     [[nodiscard]] int max_multiplier() const override { return 6; }
+    [[nodiscard]] UnisonBonusType unison_bonus_type() const override
+    {
+        return UnisonBonusType::RockBand3;
+    }
 };
 
 class BaseYargEngine : public Engine {
@@ -565,6 +614,7 @@ public:
     {
         return false;
     }
+    [[nodiscard]] int clean_play_bonus() const override { return 0; }
     [[nodiscard]] bool delayed_multiplier() const override { return false; }
     [[nodiscard]] double early_timing_window(double early_gap,
                                              double late_gap) const override
@@ -573,7 +623,7 @@ public:
     }
     [[nodiscard]] bool has_bres() const override { return false; }
     [[nodiscard]] bool has_early_whammy() const override { return true; }
-    [[nodiscard]] bool has_unison_bonuses() const override { return true; }
+    [[nodiscard]] bool has_whammy_bursts() const override { return false; }
     [[nodiscard]] bool ignore_average_multiplier() const override
     {
         return true;
@@ -611,6 +661,10 @@ public:
     [[nodiscard]] SustainTicksMetric sustain_ticks_metric() const override
     {
         return SustainTicksMetric::Beat;
+    }
+    [[nodiscard]] UnisonBonusType unison_bonus_type() const override
+    {
+        return UnisonBonusType::Yarg;
     }
 };
 

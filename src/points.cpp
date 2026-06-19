@@ -65,8 +65,18 @@ void append_sustain_point(OutputIt points, SpPosition position, int value,
     if (!max_start.has_value()) {
         max_start = position;
     }
-    *points++ = {position, *start, *end, *max_start, {}, {},
-                 value,    value,  true, false,      false};
+    *points++ = Point {.position = position,
+                       .hit_window_start = *start,
+                       .hit_window_end = *end,
+                       .max_sqz_hit_window_start = *max_start,
+                       .fill_start = {},
+                       .fill_delay_position = {},
+                       .value = value,
+                       .base_value = value,
+                       .clean_play_bonus = 0,
+                       .is_hold_point = true,
+                       .is_sp_granting_note = false,
+                       .is_unison_sp_granting_note = false};
 }
 
 int ms_at_fretbar(SightRead::Fretbar position, const SpTimeMap& time_map)
@@ -247,6 +257,36 @@ int get_chord_size(const SightRead::Note& note,
     return note_count;
 }
 
+std::tuple<SightRead::Tick, SightRead::Tick>
+minmax_lengths(const SightRead::Note& note)
+{
+    SightRead::Tick min_length {std::numeric_limits<int>::max()};
+    SightRead::Tick max_length {0};
+    for (auto length : note.lengths) {
+        if (length == SightRead::Tick {-1}) {
+            continue;
+        }
+        min_length = std::min(length, min_length);
+        max_length = std::max(length, max_length);
+    }
+
+    return {min_length, max_length};
+}
+
+int clean_bonus_multiplier(const SightRead::Note& note,
+                           const SightRead::DrumSettings& drum_settings)
+{
+    if (note.is_skipped_kick(drum_settings)) {
+        return 0;
+    }
+
+    const auto [min_length, max_length] = minmax_lengths(note);
+    if (min_length == max_length) {
+        return 1;
+    }
+    return get_chord_size(note, drum_settings);
+}
+
 template <typename OutputIt>
 void append_note_points(std::vector<SightRead::Note>::const_iterator note,
                         const std::vector<SightRead::Note>& notes,
@@ -312,20 +352,14 @@ void append_note_points(std::vector<SightRead::Note>::const_iterator note,
         .fill_delay_position = {},
         .value = note_value * chord_size,
         .base_value = note_value * chord_size,
+        .clean_play_bonus = pathing_settings.engine->clean_play_bonus()
+            * clean_bonus_multiplier(*note, pathing_settings.drum_settings),
         .is_hold_point = false,
         .is_sp_granting_note = is_note_sp_ender,
         .is_unison_sp_granting_note = is_unison_sp_ender};
     *points++ = note_point;
 
-    SightRead::Tick min_length {std::numeric_limits<int>::max()};
-    SightRead::Tick max_length {0};
-    for (auto length : note->lengths) {
-        if (length == SightRead::Tick {-1}) {
-            continue;
-        }
-        min_length = std::min(length, min_length);
-        max_length = std::max(length, max_length);
-    }
+    const auto [min_length, max_length] = minmax_lengths(*note);
 
     if (min_length == max_length
         || pathing_settings.engine->merge_uneven_sustains()) {
@@ -345,7 +379,7 @@ void append_note_points(std::vector<SightRead::Note>::const_iterator note,
 std::vector<Point>::iterator closest_point(std::vector<Point>& points,
                                            SightRead::Beat fill_end)
 {
-    assert(!points.empty()); // NOLINT
+    assert(!points.empty());
     auto nearest = points.begin();
     auto best_gap = std::abs((nearest->position.beat - fill_end).value());
     for (auto p = std::next(points.begin()); p < points.end(); ++p) {
@@ -422,16 +456,18 @@ std::vector<PointPtr> next_matching_vector(const std::vector<Point>& points,
     if (points.empty()) {
         return {};
     }
+    const auto* next_matching_point
+        = std::next(points.data(), static_cast<std::ptrdiff_t>(points.size()));
     std::vector<PointPtr> next_matching_points;
-    auto next_matching_point = points.cend();
-    for (auto p = std::prev(points.cend());; --p) {
+    next_matching_points.reserve(points.size());
+    for (const auto* p = std::prev(next_matching_point);; --p) {
         if (predicate(*p)) {
             next_matching_point = p;
         }
         next_matching_points.push_back(next_matching_point);
-        // We can't have the loop condition be p >= points.cbegin() because
-        // decrementing past .begin() is undefined behaviour.
-        if (p == points.cbegin()) {
+        // We can't have the loop condition be p >= points.data() because
+        // decrementing past .data() is undefined behaviour.
+        if (p == points.data()) {
             break;
         }
     }
@@ -533,17 +569,12 @@ std::vector<Point> unmultiplied_points(const SightRead::NoteTrack& track,
             && ((q == notes.cend())
                 || !phrase_contains_pos(*current_phrase, q->position))) {
             is_note_sp_ender = true;
-            if (pathing_settings.engine->has_unison_bonuses()
-                && std::ranges::find_if(
-                       duration_data.unison_phrases,
-                       [&](const auto& phrase) {
-                           return std::tie(phrase.position, phrase.length)
-                               == std::tie(current_phrase->position,
-                                           current_phrase->length);
-                       })
-                    != duration_data.unison_phrases.cend()) {
-                is_unison_sp_ender = true;
-            }
+            is_unison_sp_ender = std::ranges::any_of(
+                duration_data.unison_phrases, [&](const auto& phrase) {
+                    return std::tie(phrase.position, phrase.length)
+                        == std::tie(current_phrase->position,
+                                    current_phrase->length);
+                });
         }
         append_note_points(p, notes, std::back_inserter(points),
                            duration_data.time_map,
@@ -616,8 +647,11 @@ first_after_current_sp_vector(const std::vector<Point>& points,
 
     std::vector<PointPtr> results;
 
+    const auto* end_pointer
+        = std::next(points.data(), static_cast<std::ptrdiff_t>(points.size()));
+
     if (engine.overlaps()) {
-        for (auto p = points.cbegin(); p < points.cend(); ++p) {
+        for (const auto* p = points.data(); p < end_pointer; ++p) {
             results.push_back(std::next(p));
         }
 
@@ -626,7 +660,7 @@ first_after_current_sp_vector(const std::vector<Point>& points,
 
     const auto& tempo_map = track.global_data().tempo_map();
     auto current_sp = track.sp_phrases().cbegin();
-    for (auto p = points.cbegin(); p < points.cend();) {
+    for (const auto* p = points.data(); p < end_pointer;) {
         current_sp
             = std::find_if(current_sp, track.sp_phrases().cend(), [&](auto sp) {
                   return tempo_map.to_beats(sp.position + sp.length)
@@ -644,7 +678,7 @@ first_after_current_sp_vector(const std::vector<Point>& points,
             results.push_back(++p);
             continue;
         }
-        const auto q = std::find_if(std::next(p), points.cend(), [&](auto pt) {
+        const auto* q = std::find_if(std::next(p), end_pointer, [&](auto pt) {
             return pt.position.beat >= sp_end && !pt.is_hold_point;
         });
         while (p < q) {
@@ -747,30 +781,30 @@ PointSet::PointSet(const SightRead::NoteTrack& track,
 PointPtr PointSet::first_after_current_phrase(PointPtr point) const
 {
     const auto index
-        = static_cast<std::size_t>(std::distance(m_points.cbegin(), point));
+        = static_cast<std::size_t>(std::distance(m_points.data(), point));
     return m_first_after_current_sp.at(index);
 }
 
 PointPtr PointSet::next_non_hold_point(PointPtr point) const
 {
     const auto index
-        = static_cast<std::size_t>(std::distance(m_points.cbegin(), point));
+        = static_cast<std::size_t>(std::distance(m_points.data(), point));
     return m_next_non_hold_point.at(index);
 }
 
 PointPtr PointSet::next_sp_granting_note(PointPtr point) const
 {
     const auto index
-        = static_cast<std::size_t>(std::distance(m_points.cbegin(), point));
+        = static_cast<std::size_t>(std::distance(m_points.data(), point));
     return m_next_sp_granting_note.at(index);
 }
 
 int PointSet::range_score(PointPtr start, PointPtr end) const
 {
     const auto start_index
-        = static_cast<std::size_t>(std::distance(m_points.cbegin(), start));
+        = static_cast<std::size_t>(std::distance(m_points.data(), start));
     const auto end_index
-        = static_cast<std::size_t>(std::distance(m_points.cbegin(), end));
+        = static_cast<std::size_t>(std::distance(m_points.data(), end));
     return m_cumulative_score_totals.at(end_index)
         - m_cumulative_score_totals.at(start_index);
 }

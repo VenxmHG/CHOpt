@@ -24,7 +24,7 @@ jobs:
           version: 6.6.*
 
       - name: Install Boost dependencies
-        run: vcpkg install boost-locale boost-test
+        run: vcpkg install boost-container-hash boost-locale boost-test boost-unordered
 
       - name: Make build directory
         run: mkdir build
@@ -34,9 +34,9 @@ jobs:
         env:
           CMAKE_TOOLCHAIN_FILE: /usr/local/share/vcpkg/scripts/buildsystems/vcpkg.cmake
           CXX: g++-14
-        run: >
-          cmake -DBUILD_GUI=OFF -DENABLE_SANITISER_ADDRESS=ON
-          -DENABLE_SANITISER_LEAK=ON -DENABLE_SANITISER_UNDEFINED_BEHAVIOUR=ON
+        run: >-
+          cmake -DBUILD_GUI=OFF
+          -DENABLE_SANITISER_ADDRESS=ON -DENABLE_SANITISER_UNDEFINED_BEHAVIOUR=ON
           ..
 
       - name: Build
@@ -65,8 +65,8 @@ jobs:
         with:
           version: 6.6.*
 
-      - name: Install Boost Locale
-        run: vcpkg install boost-locale
+      - name: Install Boost dependencies
+        run: vcpkg install boost-container-hash boost-locale boost-unordered
 
       - name: Make build directory
         run: mkdir build
@@ -76,10 +76,10 @@ jobs:
         env:
           CMAKE_TOOLCHAIN_FILE: /usr/local/share/vcpkg/scripts/buildsystems/vcpkg.cmake
           CXX: g++-14
-        run: >
+        run: >-
           cmake -DBUILD_GUI=OFF -DPACKAGE_TESTS=OFF
-          -DENABLE_SANITISER_ADDRESS=ON -DENABLE_SANITISER_LEAK=ON
-          -DENABLE_SANITISER_UNDEFINED_BEHAVIOUR=ON ..
+          -DENABLE_SANITISER_ADDRESS=ON -DENABLE_SANITISER_UNDEFINED_BEHAVIOUR=ON
+          -DCMAKE_CXX_FLAGS=-O1 ..
 
       - name: Build
         working-directory: build

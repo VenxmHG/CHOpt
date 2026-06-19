@@ -28,31 +28,32 @@ Only the -f parameter is required, the difficulty defaults to Expert and the
 path is by default saved to path.png. The full list of arguments can be found
 by passing -h or --help to CHOpt, or by consulting the table below.
 
-| Arguments               | Action                                                                        |
-| ----------------------- | ----------------------------------------------------------------------------- |
-| -h, --help              | List optional arguments                                                       |
-| -f, --file              | Chart filename                                                                |
-| -o, --output            | Filename of output image (.bmp or .png)                                       |
-| -d, --diff              | Difficulty (easy/medium/hard/expert)                                          |
-| -i, --instrument        | Instrument (guitar/coop/bass/rhythm/keys/ghl/ghlbass/drums/proguitar/probass/prodrums) |
-| --sqz, --squeeze        | Set squeeze %                                                                 |
-| --ew, --early-whammy    | Set early whammy %                                                            |
-| --lazy, --lazy-whammy   | Set number of ms of whammy lost per sustain                                   |
-| --delay, --whammy-delay | Amount of ms after each activation before whammy can be obtained              |
-| --lag, --video-lag      | Video calibration, in ms                                                      |
-| -s, --speed             | Set speed the song is played at                                               |
-| -l, --lefty-flip        | Draw with lefty flip                                                          |
-| --no-double-kick        | Disable 2x kick (drums only)                                                  |
-| --no-kick               | Disable non-2x kicks (drums only)                                             |
-| --no-pro-drums          | Disable pro drums (drums only)                                                |
-| --engine                | Choose the engine (ch/fnf/gh1/gh2/gh3/rb/rb3/yarg)                            |
-| -p, --precision-mode    | Enable precision mode (CH and YARG only)                                      |
-| -b, --blank             | Output a blank image without pathing                                          |
-| --no-image              | Do not create an image                                                        |
-| --no-bpms               | Do not draw BPMs                                                              |
-| --no-solos              | Do not draw solo sections                                                     |
-| --no-time-sigs          | Do not draw time signatures                                                   |
-| --act-opacity           | Set opacity of activations in images                                          |
+| Arguments               | Action                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| -h, --help              | List optional arguments                                                                                 |
+| -f, --file              | Chart filename                                                                                          |
+| -o, --output            | Filename of output image (.bmp or .png)                                                                 |
+| -d, --diff              | Difficulty (easy/medium/hard/expert)                                                                    |
+| -i, --instrument        | Instrument (guitar/coop/bass/rhythm/keys/ghl/ghlbass/ghlrhythm/ghlcoop/ghlkeys/drums/vocals/karaoke/proguitar/probass/prodrums) |
+| --sqz, --squeeze        | Set squeeze %                                                                                           |
+| --ew, --early-whammy    | Set early whammy %                                                                                      |
+| --lazy, --lazy-whammy   | Set number of ms of whammy lost per sustain                                                             |
+| --delay, --whammy-delay | Amount of ms after each activation before whammy can be obtained                                        |
+| --lag, --video-lag      | Video calibration, in ms                                                                                |
+| -s, --speed             | Set speed the song is played at                                                                         |
+| -l, --lefty-flip        | Draw with lefty flip                                                                                    |
+| --no-double-kick        | Disable 2x kick (drums only)                                                                            |
+| --no-kick               | Disable non-2x kicks (drums only)                                                                       |
+| --no-pro-drums          | Disable pro drums (drums only)                                                                          |
+| --engine                | Choose the engine (ch/fnf/gh1/gh2/gh3/rb/rb3/yarg)                                                      |
+| -p, --precision-mode    | Enable precision mode (CH and YARG only)                                                                |
+| -b, --blank             | Output a blank image without pathing                                                                    |
+| --no-image              | Do not create an image                                                                                  |
+| --no-bpms               | Do not draw BPMs                                                                                        |
+| --no-solos              | Do not draw solo sections                                                                               |
+| --no-time-sigs          | Do not draw time signatures                                                                             |
+| --scorehero-vocal-paths | Use old ScoreHero notation for vocal and Karaoke paths                                                  |
+| --act-opacity           | Set opacity of activations in images                                                                    |
 
 If you would like to conveniently run CHOpt on a setlist and you happen to be
 on Windows, I made a PowerShell script that I've put [here](misc/setlist.ps1).
@@ -97,11 +98,11 @@ details). SightRead is included a git submodule.
 getting an initial idea of Clone Hero's parsing behaviour.
 * Dinoguy1000 and shadoweh helped me make sure CHOpt runs on other peoples'
 machines.
-* Various users for feedback and testing, including 3-UP, AddyMills, ArchWK,
-Bromik, CyclopsDragon, DNelson, GHNerd, GiometriQ, Haggis, JarheadHME, Joel,
-Jpetersen5, Jrh, JUANPGP, Kyleruth, LightlessWalk, Littlejth, Lucretio,
-NicoBrenChan, Raine, RandomDays, RileyTheFox, SanicStudios, Taka, Tposejank,
-Venxm and Zantor.
+* Various users for feedback and testing, including AddyMills, ArchWK, Blackett,
+Bromik, CyclopsDragon, Daze, DNelson, GHNerd, GiometriQ, Haggis, JarheadHME,
+Joel, Jpetersen5, Jrh, JUANPGP, Kyleruth, LightlessWalk, Littlejth, Lucretio,
+Miscellany, NicoBrenChan, Raine, RandomDays, RileyTheFox, SanicStudios, Taka,
+Tposejank, Venxm, xdhaqwen and Zantor.
 
 ## Contact
 

@@ -44,12 +44,20 @@ int bre_boost(const SightRead::NoteTrack& track, const Engine& engine)
                             + BRE_VALUE_PER_SECOND * seconds_gap.value());
 }
 
+int clean_play_boost(const PointSet& points)
+{
+    return std::accumulate(
+        points.cbegin(), points.cend(), 0,
+        [](const auto x, const auto& y) { return x + y.clean_play_bonus; });
+}
+
 class SpStatus {
 private:
     SpPosition m_position;
     double m_sp;
     bool m_overlap_engine;
     SpEngineValues m_sp_engine_values;
+    SightRead::Beat m_last_burst_position;
 
     static constexpr double MEASURES_PER_BAR = 8.0;
 
@@ -60,6 +68,7 @@ public:
         , m_sp {sp}
         , m_overlap_engine {overlap_engine}
         , m_sp_engine_values {sp_engine_values}
+        , m_last_burst_position {-std::numeric_limits<double>::infinity()}
     {
     }
 
@@ -79,13 +88,18 @@ public:
                             bool does_overlap)
     {
         if (does_overlap) {
-            m_sp = sp_data.propagate_sp_over_whammy_max(m_position,
-                                                        end_position, m_sp);
+            m_sp = sp_data.propagate_sp_over_whammy_max(
+                m_position, end_position, m_sp, m_last_burst_position);
         } else {
             m_sp -= (end_position.sp_measure - m_position.sp_measure).value()
                 / MEASURES_PER_BAR;
         }
         m_position = end_position;
+        // The previous double is picked as if a burst happens on exactly
+        // end_position then it isn't added, so we want to retain it.
+        m_last_burst_position = SightRead::Beat {
+            std::nextafter(end_position.beat.value(),
+                           -std::numeric_limits<double>::infinity())};
     }
 
     void update_early_end(SpPosition sp_note_start, const SpData& sp_data,
@@ -117,7 +131,7 @@ public:
         // case we just hit the note as early as possible.
         if (does_overlap) {
             const auto new_sp = sp_data.propagate_sp_over_whammy_max(
-                sp_note_start, sp_note_end, m_sp);
+                sp_note_start, sp_note_end, m_sp, m_last_burst_position);
             if (new_sp >= 0.0) {
                 m_sp = new_sp;
                 m_position = sp_note_end;
@@ -130,7 +144,7 @@ public:
 SpBar ProcessedSong::sp_from_phrases(PointPtr begin, PointPtr end) const
 {
     SpBar sp_bar {0.0, 0.0, m_sp_engine_values};
-    for (auto p = m_points.next_sp_granting_note(begin); p < end;
+    for (const auto* p = m_points.next_sp_granting_note(begin); p < end;
          p = m_points.next_sp_granting_note(std::next(p))) {
         if (p->is_unison_sp_granting_note) {
             sp_bar.add_unison_phrase();
@@ -144,7 +158,7 @@ SpBar ProcessedSong::sp_from_phrases(PointPtr begin, PointPtr end) const
 
 int ProcessedSong::drum_activation_phrase_count() const
 {
-    assert(m_sp_engine_values.phrase_amount > 0.0); // NOLINT
+    assert(m_sp_engine_values.phrase_amount > 0.0);
     const auto phrase_count = std::lround(m_sp_engine_values.minimum_to_activate
                                           / m_sp_engine_values.phrase_amount);
     return std::max(1, static_cast<int>(phrase_count));
@@ -162,6 +176,7 @@ ProcessedSong::ProcessedSong(const SightRead::NoteTrack& track,
     , m_drum_fill_measure_delay {pathing_settings.engine
                                      ->drum_fill_measure_delay()}
     , m_total_bre_boost {bre_boost(track, *pathing_settings.engine)}
+    , m_total_clean_play_boost {clean_play_boost(m_points)}
     , m_base_score {track.base_score(pathing_settings.drum_settings)}
     , m_ignore_average_multiplier {pathing_settings.engine
                                        ->ignore_average_multiplier()}
@@ -174,20 +189,23 @@ ProcessedSong::ProcessedSong(const SightRead::NoteTrack& track,
         [](const auto x, const auto& y) { return x + y.value; });
 
     m_phrase_note_spans.reserve(track.sp_phrases().size());
+
+    const auto* first_phrase_point = m_points.cbegin();
     for (const auto& phrase : track.sp_phrases()) {
         const auto phrase_start
             = duration_data.time_map.to_beats(phrase.position);
         const auto phrase_end
             = duration_data.time_map.to_beats(phrase.position + phrase.length);
-        const auto start = std::ranges::find_if(
-            m_points.cbegin(), m_points.cend(), [&](const auto& pt) {
+        first_phrase_point = std::ranges::find_if(
+            first_phrase_point, m_points.cend(), [&](const auto& pt) {
                 return !pt.is_hold_point && pt.position.beat >= phrase_start;
             });
-        const auto end
-            = std::find_if(start, m_points.cend(), [&](const auto& pt) {
-                  return !pt.is_hold_point && pt.position.beat >= phrase_end;
-              });
-        m_phrase_note_spans.push_back({.begin = start, .end = end});
+        const auto* end = std::find_if(
+            first_phrase_point, m_points.cend(), [&](const auto& pt) {
+                return !pt.is_hold_point && pt.position.beat >= phrase_end;
+            });
+        m_phrase_note_spans.push_back(
+            {.begin = first_phrase_point, .end = end});
     }
 }
 
@@ -245,7 +263,8 @@ ProcessedSong::total_available_sp_with_earliest_pos(
     auto sp_bar = sp_from_phrases(first_point, act_start);
 
     sp_bar.max() += m_sp_data.available_whammy(
-        start, earliest_potential_pos.beat, act_start->position.beat);
+        start, earliest_potential_pos.beat,
+        m_time_map.to_ticks(act_start->position.beat));
     sp_bar.max() = std::min(sp_bar.max(), 1.0);
 
     if (sp_bar.full_enough_to_activate()) {
@@ -256,16 +275,18 @@ ProcessedSong::total_available_sp_with_earliest_pos(
         = m_sp_engine_values.minimum_to_activate - sp_bar.max();
     auto first_beat = earliest_potential_pos.beat;
     auto last_beat = act_start->position.beat;
-    if (m_sp_data.available_whammy(first_beat, last_beat,
-                                   act_start->position.beat)
+    if (m_sp_data.available_whammy(
+            first_beat, last_beat,
+            m_time_map.to_ticks(act_start->position.beat))
         < extra_sp_required) {
         return {sp_bar, earliest_potential_pos};
     }
 
     while (last_beat - first_beat > BEAT_EPSILON) {
         const auto mid_beat = (first_beat + last_beat) * 0.5;
-        if (m_sp_data.available_whammy(earliest_potential_pos.beat, mid_beat,
-                                       act_start->position.beat)
+        if (m_sp_data.available_whammy(
+                earliest_potential_pos.beat, mid_beat,
+                m_time_map.to_ticks(act_start->position.beat))
             < extra_sp_required) {
             first_beat = mid_beat;
         } else {
@@ -274,7 +295,8 @@ ProcessedSong::total_available_sp_with_earliest_pos(
     }
 
     sp_bar.max() += m_sp_data.available_whammy(
-        earliest_potential_pos.beat, last_beat, act_start->position.beat);
+        earliest_potential_pos.beat, last_beat,
+        m_time_map.to_ticks(act_start->position.beat));
     sp_bar.max() = std::min(sp_bar.max(), 1.0);
 
     return {sp_bar,
@@ -285,7 +307,7 @@ ProcessedSong::total_available_sp_with_earliest_pos(
 SpPosition ProcessedSong::adjusted_hit_window_start(PointPtr point,
                                                     double squeeze) const
 {
-    assert((0.0 <= squeeze) && (squeeze <= 1.0)); // NOLINT
+    assert((0.0 <= squeeze) && (squeeze <= 1.0));
 
     if (squeeze == 1.0) {
         return point->hit_window_start;
@@ -303,7 +325,7 @@ SpPosition ProcessedSong::adjusted_hit_window_start(PointPtr point,
 SpPosition ProcessedSong::adjusted_hit_window_end(PointPtr point,
                                                   double squeeze) const
 {
-    assert((0.0 <= squeeze) && (squeeze <= 1.0)); // NOLINT
+    assert((0.0 <= squeeze) && (squeeze <= 1.0));
 
     if (squeeze == 1.0) {
         return point->hit_window_end;
@@ -358,7 +380,7 @@ ProcessedSong::is_candidate_valid(const ActivationCandidate& activation,
     SpStatus status_for_late_end {late_end_position, late_end_sp, m_overlaps,
                                   m_sp_engine_values};
 
-    for (auto p = m_points.next_sp_granting_note(activation.act_start);
+    for (const auto* p = m_points.next_sp_granting_note(activation.act_start);
          p < activation.act_end;
          p = m_points.next_sp_granting_note(std::next(p))) {
         auto p_start = adjusted_hit_window_start(p, squeeze);
@@ -406,7 +428,7 @@ ProcessedSong::is_candidate_valid(const ActivationCandidate& activation,
     const auto end_meas = status_for_early_end.position().sp_measure
         + SpMeasure(status_for_early_end.sp() * MEASURES_PER_BAR);
 
-    const auto next_point = std::next(activation.act_end);
+    const auto* next_point = std::next(activation.act_end);
     if (next_point != m_points.cend()
         && end_meas
             >= adjusted_hit_window_end(next_point, squeeze).sp_measure) {
@@ -428,8 +450,8 @@ void ProcessedSong::append_activation(std::stringstream& stream,
         stream << "See image";
         return;
     }
-    const auto act_start = activation.act_start;
-    auto previous_sp_note = std::prev(act_start);
+    const auto* act_start = activation.act_start;
+    const auto* previous_sp_note = std::prev(act_start);
     while (!previous_sp_note->is_sp_granting_note) {
         --previous_sp_note;
     }
@@ -437,7 +459,7 @@ void ProcessedSong::append_activation(std::stringstream& stream,
         = std::count_if(std::next(previous_sp_note), std::next(act_start),
                         [](const auto& p) { return !p.is_hold_point; });
     if (act_start->is_hold_point) {
-        auto starting_note = act_start;
+        const auto* starting_note = act_start;
         while (starting_note->is_hold_point) {
             --starting_note;
         }
@@ -450,13 +472,14 @@ void ProcessedSong::append_activation(std::stringstream& stream,
         }
     }
     if (count > 1) {
-        auto previous_note = act_start;
+        const auto* previous_note = act_start;
         while (previous_note->is_hold_point) {
             --previous_note;
         }
         const auto colour = m_points.colour_set(previous_note);
         auto same_colour_count = 1;
-        for (auto p = std::next(previous_sp_note); p < previous_note; ++p) {
+        for (const auto* p = std::next(previous_sp_note); p < previous_note;
+             ++p) {
             if (p->is_hold_point) {
                 continue;
             }
@@ -468,7 +491,7 @@ void ProcessedSong::append_activation(std::stringstream& stream,
     } else if (count == 1) {
         stream << "NN";
     }
-    const auto act_end = activation.act_end;
+    const auto* act_end = activation.act_end;
     if (!act_end->is_hold_point) {
         stream << " (" << m_points.colour_set(act_end) << ")";
     }
@@ -477,8 +500,8 @@ void ProcessedSong::append_activation(std::stringstream& stream,
 bool ProcessedSong::nullifies_phrase(const Activation& activation,
                                      const PhrasePointSpan& phrase)
 {
-    const auto start = std::max(phrase.begin, activation.act_start);
-    const auto end = std::min(phrase.end, std::next(activation.act_end));
+    const auto* start = std::max(phrase.begin, activation.act_start);
+    const auto* end = std::min(phrase.end, std::next(activation.act_end));
     if (start >= end) {
         return false;
     }
@@ -520,7 +543,7 @@ std::vector<std::string> ProcessedSong::act_summaries(const Path& path) const
     using namespace std::literals::string_literals;
 
     std::vector<std::string> activation_summaries;
-    auto start_point = m_points.cbegin();
+    const auto* start_point = m_points.cbegin();
     for (const auto& act : path.activations) {
         const auto sp_before
             = std::count_if(start_point, act.act_start, [](const auto& p) {
@@ -553,7 +576,7 @@ std::vector<std::string>
 ProcessedSong::drum_act_summaries(const Path& path) const
 {
     std::vector<std::string> activation_summaries;
-    auto start_point = m_points.cbegin();
+    const auto* start_point = m_points.cbegin();
     const auto activation_phrase_count = drum_activation_phrase_count();
     const auto fill_delay_position = [](const Point& point) {
         return point.fill_delay_position.value_or(
@@ -577,7 +600,7 @@ ProcessedSong::drum_act_summaries(const Path& path) const
             = std::count_if(start_point, act.act_start, [&](const auto& p) {
                   return is_fill_active(p);
               });
-        assert(act.act_start->fill_start.has_value()); // NOLINT
+        assert(act.act_start->fill_start.has_value());
         if (skipped_fills == 0
             && late_fill_point > fill_delay_position(*act.act_start)) {
             activation_summaries.emplace_back("0(E)");
@@ -628,6 +651,7 @@ std::string ProcessedSong::path_summary(const Path& path) const
     auto no_sp_score = std::accumulate(
         m_points.cbegin(), m_points.cend(), 0,
         [](const auto x, const auto& y) { return x + y.value; });
+    no_sp_score += m_total_clean_play_boost;
     no_sp_score += m_total_solo_boost;
     no_sp_score += m_total_bre_boost;
     stream << "\nNo SP score: " << no_sp_score;
@@ -639,7 +663,8 @@ std::string ProcessedSong::path_summary(const Path& path) const
         double avg_mult = 0;
         if (m_base_score != 0) {
             auto int_avg_mult = 0;
-            auto stars_score = total_score - m_total_solo_boost;
+            auto stars_score
+                = total_score - m_total_solo_boost - m_total_clean_play_boost;
             for (auto i = 0; i < 4; ++i) {
                 int_avg_mult *= 10; // NOLINT
                 int_avg_mult += (stars_score / m_base_score);
