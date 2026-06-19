@@ -32,13 +32,15 @@
 #include "sptimemap.hpp"
 
 // fill_start is used for Drums, giving the start of the fill that makes a point
-// an activation note if it is one, or nullopt otherwise.
+// an activation note if it is one, or nullopt otherwise. fill_delay_position is
+// the position checked against newly collected SP's fill-appearance delay.
 struct Point {
     SpPosition position;
     SpPosition hit_window_start;
     SpPosition hit_window_end;
     SpPosition max_sqz_hit_window_start;
     std::optional<SightRead::Second> fill_start;
+    std::optional<SightRead::Second> fill_delay_position;
     int value;
     int base_value;
     bool is_hold_point;

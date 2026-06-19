@@ -32,6 +32,11 @@ enum class SustainRoundingPolicy : std::uint8_t { RoundUp, RoundToNearest };
 
 enum class SustainTicksMetric : std::uint8_t { Beat, Fretbar, OdBeat };
 
+enum class DrumFillDelayAnchor : std::uint8_t {
+    FillStart,
+    FirstPointAfterFillStart
+};
+
 struct SpEngineValues {
     double phrase_amount;
     double unison_phrase_amount;
@@ -53,6 +58,10 @@ public:
     drum_fill_measure_delay() const
     {
         return std::nullopt;
+    }
+    [[nodiscard]] virtual DrumFillDelayAnchor drum_fill_delay_anchor() const
+    {
+        return DrumFillDelayAnchor::FillStart;
     }
     [[nodiscard]] virtual double burst_size() const = 0;
     [[nodiscard]] virtual bool chords_multiply_sustains() const = 0;
@@ -267,12 +276,16 @@ class FortniteGuitarEngine final : public BaseFortniteEngine {
 
 class FortniteProDrumsEngine final : public BaseFortniteEngine {
 private:
-    static constexpr double DRUM_FILL_DELAY_MEASURES = 3.0;
+    static constexpr double DRUM_FILL_DELAY_MEASURES = 0.0;
 
     [[nodiscard]] std::optional<SightRead::Measure>
     drum_fill_measure_delay() const override
     {
         return SightRead::Measure {DRUM_FILL_DELAY_MEASURES};
+    }
+    [[nodiscard]] DrumFillDelayAnchor drum_fill_delay_anchor() const override
+    {
+        return DrumFillDelayAnchor::FirstPointAfterFillStart;
     }
     [[nodiscard]] int max_multiplier() const override { return 4; }
     [[nodiscard]] int sust_points_per_beat() const override { return 12; }

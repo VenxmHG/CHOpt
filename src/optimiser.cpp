@@ -243,7 +243,11 @@ void Optimiser::complete_subpath(
 SightRead::Second Optimiser::earliest_fill_appearance(CacheKey key,
                                                       bool has_full_sp) const
 {
-    if (!m_song->is_drums() || has_full_sp) {
+    if (!m_song->is_drums()) {
+        return SightRead::Second(0.0);
+    }
+
+    if (has_full_sp) {
         return SightRead::Second(0.0);
     }
 
@@ -282,9 +286,11 @@ Optimiser::CacheValue Optimiser::find_best_subpaths(CacheKey key, Cache& cache,
     auto best_score_boost = 0;
 
     for (auto p = key.point; p < m_song->points().cend(); ++p) {
+        const auto fill_delay_position = p->fill_delay_position.value_or(
+            p->fill_start.value_or(SightRead::Second {0.0}));
         if (m_song->is_drums()
             && (!p->fill_start.has_value()
-                || p->fill_start < early_act_bound)) {
+                || fill_delay_position < early_act_bound)) {
             continue;
         }
         SpBar sp_bar {1.0, 1.0, m_song->sp_engine_values()};

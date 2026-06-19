@@ -753,16 +753,15 @@ BOOST_AUTO_TEST_CASE(
 {
     std::vector<SightRead::Note> notes {
         make_drum_note(0),
-        make_drum_note(2300, SightRead::DRUM_YELLOW,
+        make_drum_note(864, SightRead::DRUM_YELLOW,
                        SightRead::FLAGS_CYMBAL),
-        make_drum_note(2300, SightRead::DRUM_KICK),
-        make_drum_note(2600),
-        make_drum_note(2700)};
+        make_drum_note(864, SightRead::DRUM_KICK),
+        make_drum_note(1632),
+        make_drum_note(1728)};
     std::vector<SightRead::StarPower> phrases {
         {.position = SightRead::Tick {0}, .length = SightRead::Tick {1}}};
     std::vector<SightRead::DrumFill> fills {
-        {.position = SightRead::Tick {2200}, .length = SightRead::Tick {100}},
-        {.position = SightRead::Tick {2500}, .length = SightRead::Tick {100}}};
+        {.position = SightRead::Tick {960}, .length = SightRead::Tick {672}}};
     SightRead::NoteTrack note_track {
         notes, phrases, SightRead::TrackType::Drums,
         std::make_shared<SightRead::SongGlobalData>()};
@@ -781,6 +780,35 @@ BOOST_AUTO_TEST_CASE(
     BOOST_CHECK(opt_path.activations.front().act_end >= points.cbegin() + 4);
     BOOST_CHECK_LT(opt_path.activations.front().sp_start,
                    opt_path.activations.front().sp_end);
+}
+
+BOOST_AUTO_TEST_CASE(
+    fortnite_pro_drums_unlock_fills_immediately_after_sp_pickup)
+{
+    std::vector<SightRead::Note> notes {make_drum_note(0),
+                                        make_drum_note(192),
+                                        make_drum_note(384),
+                                        make_drum_note(576),
+                                        make_drum_note(768)};
+    std::vector<SightRead::StarPower> phrases {
+        {.position = SightRead::Tick {0}, .length = SightRead::Tick {1}}};
+    std::vector<SightRead::DrumFill> fills {
+        {.position = SightRead::Tick {1}, .length = SightRead::Tick {191}}};
+    SightRead::NoteTrack note_track {
+        notes, phrases, SightRead::TrackType::Drums,
+        std::make_shared<SightRead::SongGlobalData>()};
+    note_track.drum_fills(fills);
+
+    ProcessedSong track {note_track, default_od_beat_mode_data(),
+                         default_fortnite_pro_drums_pathing_settings()};
+    Optimiser optimiser {&track, &term_bool, 100, SightRead::Second(0.0)};
+
+    const auto opt_path = optimiser.optimal_path();
+
+    BOOST_REQUIRE_EQUAL(opt_path.activations.size(), 1U);
+    BOOST_CHECK_GT(opt_path.score_boost, 0);
+    BOOST_CHECK(opt_path.activations.front().act_start == track.points().cbegin()
+                    + 1);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

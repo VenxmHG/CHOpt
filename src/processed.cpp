@@ -555,6 +555,10 @@ ProcessedSong::drum_act_summaries(const Path& path) const
     std::vector<std::string> activation_summaries;
     auto start_point = m_points.cbegin();
     const auto activation_phrase_count = drum_activation_phrase_count();
+    const auto fill_delay_position = [](const Point& point) {
+        return point.fill_delay_position.value_or(
+            point.fill_start.value_or(SightRead::Second {0.0}));
+    };
     for (const auto& act : path.activations) {
         int sp_count = 0;
         while (sp_count < activation_phrase_count) {
@@ -565,23 +569,25 @@ ProcessedSong::drum_act_summaries(const Path& path) const
         }
         const auto [early_fill_point, late_fill_point]
             = drum_fill_delay_bounds(std::prev(start_point));
+        const auto is_fill_active = [&](const Point& p) {
+            return p.fill_start.has_value()
+                && fill_delay_position(p) >= early_fill_point;
+        };
         const auto skipped_fills
             = std::count_if(start_point, act.act_start, [&](const auto& p) {
-                  return p.fill_start.has_value()
-                      && *p.fill_start >= early_fill_point;
+                  return is_fill_active(p);
               });
-        const auto act_start_fill_start = act.act_start->fill_start;
-        assert(act_start_fill_start.has_value()); // NOLINT
-        if (skipped_fills == 0 && late_fill_point > *act_start_fill_start) {
+        assert(act.act_start->fill_start.has_value()); // NOLINT
+        if (skipped_fills == 0
+            && late_fill_point > fill_delay_position(*act.act_start)) {
             activation_summaries.emplace_back("0(E)");
         } else if (skipped_fills > 0) {
-            while (!start_point->fill_start.has_value()) {
+            while (!is_fill_active(*start_point)) {
                 ++start_point;
             }
-            const auto fill_start = start_point->fill_start;
-            assert(fill_start.has_value()); // NOLINT
-            if (late_fill_point > *fill_start
-                && early_fill_point < *fill_start) {
+            const auto fill_position = fill_delay_position(*start_point);
+            if (late_fill_point > fill_position
+                && early_fill_point < fill_position) {
                 activation_summaries.push_back(std::to_string(skipped_fills - 1)
                                                + "(L)");
             } else {
