@@ -646,6 +646,25 @@ BOOST_AUTO_TEST_CASE(fortnite_notes_have_the_multiplier_handled_correctly)
     BOOST_CHECK_EQUAL(std::prev(points.cend(), 1)->value, 72);
 }
 
+BOOST_AUTO_TEST_CASE(fortnite_pro_drums_cymbals_are_worth_168_at_four_x)
+{
+    std::vector<SightRead::Note> notes;
+    notes.reserve(31);
+    for (int i = 0; i < 31; ++i) {
+        notes.push_back(
+            make_drum_note(192 * i, SightRead::DRUM_YELLOW,
+                           SightRead::FLAGS_CYMBAL));
+    }
+
+    SightRead::NoteTrack track {notes, SightRead::TrackType::Drums,
+                                std::make_shared<SightRead::SongGlobalData>()};
+    PointSet points {track, default_od_beat_mode_data(),
+                     default_fortnite_pro_drums_pathing_settings()};
+
+    BOOST_CHECK_EQUAL(std::prev(points.cend())->base_value, 42);
+    BOOST_CHECK_EQUAL(std::prev(points.cend())->value, 168);
+}
+
 BOOST_AUTO_TEST_CASE(gh1_multiplier_delay_accounted_for)
 {
     std::vector<SightRead::Note> notes {
@@ -1206,6 +1225,20 @@ BOOST_AUTO_TEST_CASE(cymbals_get_extra_points)
     const auto* begin = points.cbegin();
 
     BOOST_CHECK_EQUAL(begin->value, 65);
+}
+
+BOOST_AUTO_TEST_CASE(fortnite_pro_drums_cymbals_are_worth_forty_two_points)
+{
+    std::vector<SightRead::Note> notes {
+        make_drum_note(0, SightRead::DRUM_YELLOW, SightRead::FLAGS_CYMBAL)};
+    SightRead::NoteTrack track {notes, SightRead::TrackType::Drums,
+                                std::make_unique<SightRead::SongGlobalData>()};
+    PointSet points {track, default_od_beat_mode_data(),
+                     default_fortnite_pro_drums_pathing_settings()};
+    const auto* begin = points.cbegin();
+
+    BOOST_CHECK_EQUAL(begin->base_value, 42);
+    BOOST_CHECK_EQUAL(begin->value, 42);
 }
 
 BOOST_AUTO_TEST_CASE(dynamics_get_double_points)

@@ -303,6 +303,7 @@ class FortniteProDrumsEngine final : public BaseFortniteEngine {
 private:
     static constexpr double DRUM_FILL_DELAY_MEASURES = 0.0;
 
+    [[nodiscard]] int base_cymbal_value() const override { return 42; }
     [[nodiscard]] std::optional<SightRead::Measure>
     drum_fill_measure_delay() const override
     {
