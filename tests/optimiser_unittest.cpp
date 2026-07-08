@@ -944,6 +944,49 @@ BOOST_AUTO_TEST_CASE(quarter_bar_activations_are_possible_on_fortnite_engine)
                                   optimal_acts.cbegin(), optimal_acts.cend());
 }
 
+BOOST_AUTO_TEST_CASE(fortnite_pro_drums_activation_start_uses_replacement_score)
+{
+    std::vector<SightRead::Note> notes {
+        make_drum_note(0), make_drum_note(192, SightRead::DRUM_RED)};
+    std::vector<SightRead::StarPower> phrases {
+        {.position = SightRead::Tick {0}, .length = SightRead::Tick {1}}};
+    std::vector<SightRead::DrumFill> fills {
+        {.position = SightRead::Tick {191}, .length = SightRead::Tick {2}}};
+    SightRead::NoteTrack note_track {
+        notes, SightRead::TrackType::Drums,
+        std::make_shared<SightRead::SongGlobalData>()};
+    note_track.sp_phrases(phrases);
+    note_track.drum_fills(fills);
+    ProcessedSong track {note_track, default_od_beat_mode_data(),
+                         default_fortnite_pro_drums_pathing_settings()};
+    Optimiser optimiser {&track, &term_bool, 100, SightRead::Second(0.0)};
+    const auto opt_path = optimiser.optimal_path();
+
+    BOOST_REQUIRE_EQUAL(opt_path.activations.size(), 1U);
+    BOOST_CHECK_EQUAL(opt_path.activations.front().act_start,
+                      track.points().cbegin() + 2);
+    BOOST_CHECK_EQUAL(opt_path.score_boost, 84);
+}
+
+BOOST_AUTO_TEST_CASE(fortnite_pro_drums_inactive_fill_keeps_original_score)
+{
+    std::vector<SightRead::Note> notes {
+        make_drum_note(0), make_drum_note(192, SightRead::DRUM_RED)};
+    std::vector<SightRead::DrumFill> fills {
+        {.position = SightRead::Tick {191}, .length = SightRead::Tick {2}}};
+    SightRead::NoteTrack note_track {
+        notes, SightRead::TrackType::Drums,
+        std::make_shared<SightRead::SongGlobalData>()};
+    note_track.drum_fills(fills);
+    ProcessedSong track {note_track, default_od_beat_mode_data(),
+                         default_fortnite_pro_drums_pathing_settings()};
+    Optimiser optimiser {&track, &term_bool, 100, SightRead::Second(0.0)};
+    const auto opt_path = optimiser.optimal_path();
+
+    BOOST_CHECK(opt_path.activations.empty());
+    BOOST_CHECK_EQUAL(opt_path.score_boost, 0);
+}
+
 BOOST_AUTO_TEST_CASE(one_phrase_acts_use_ew_when_bigger_than_squeeze)
 {
     std::vector<SightRead::Note> notes {make_note(192, 1420), make_note(24576)};

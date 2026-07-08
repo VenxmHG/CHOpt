@@ -1214,6 +1214,28 @@ BOOST_AUTO_TEST_CASE(fills_attach_to_later_point_in_case_of_a_tie)
     BOOST_TEST((begin + 1)->fill_start.has_value());
 }
 
+BOOST_AUTO_TEST_CASE(fortnite_pro_drums_fills_create_activation_point_at_window_end)
+{
+    std::vector<SightRead::Note> notes {make_drum_note(0), make_drum_note(180),
+                                        make_drum_note(220)};
+    std::vector<SightRead::DrumFill> fills {
+        {.position = SightRead::Tick {0}, .length = SightRead::Tick {192}}};
+    SightRead::NoteTrack track {notes, SightRead::TrackType::Drums,
+                                std::make_unique<SightRead::SongGlobalData>()};
+    track.drum_fills(fills);
+    PointSet points {track, default_od_beat_mode_data(),
+                     default_fortnite_pro_drums_pathing_settings()};
+    const auto* begin = points.cbegin();
+
+    BOOST_REQUIRE_EQUAL(std::distance(points.cbegin(), points.cend()), 4);
+    BOOST_TEST(!begin->fill_start.has_value());
+    BOOST_TEST(!(begin + 1)->fill_start.has_value());
+    BOOST_TEST((begin + 2)->fill_start.has_value());
+    BOOST_CHECK_CLOSE((begin + 2)->position.beat.value(), 1.0, 0.0001);
+    BOOST_TEST((begin + 2)->active_drum_fill_generated_note);
+    BOOST_TEST(!(begin + 3)->fill_start.has_value());
+}
+
 BOOST_AUTO_TEST_CASE(cymbals_get_extra_points)
 {
     std::vector<SightRead::Note> notes {
@@ -1239,6 +1261,58 @@ BOOST_AUTO_TEST_CASE(fortnite_pro_drums_cymbals_are_worth_forty_two_points)
 
     BOOST_CHECK_EQUAL(begin->base_value, 42);
     BOOST_CHECK_EQUAL(begin->value, 42);
+}
+
+BOOST_AUTO_TEST_CASE(fortnite_pro_drums_active_fill_replaces_non_kick_note)
+{
+    std::vector<SightRead::Note> notes {
+        make_drum_note(0, SightRead::DRUM_RED)};
+    SightRead::NoteTrack track {notes, SightRead::TrackType::Drums,
+                                std::make_unique<SightRead::SongGlobalData>()};
+    PointSet points {track, default_od_beat_mode_data(),
+                     default_fortnite_pro_drums_pathing_settings()};
+
+    BOOST_CHECK_EQUAL(points.cbegin()->active_drum_fill_value_delta, 6);
+}
+
+BOOST_AUTO_TEST_CASE(fortnite_pro_drums_active_fill_keeps_same_note_kick)
+{
+    std::vector<SightRead::Note> notes {make_drum_chord(
+        0,
+        {SightRead::DRUM_RED, SightRead::DRUM_BLUE, SightRead::DRUM_KICK})};
+    SightRead::NoteTrack track {notes, SightRead::TrackType::Drums,
+                                std::make_unique<SightRead::SongGlobalData>()};
+    PointSet points {track, default_od_beat_mode_data(),
+                     default_fortnite_pro_drums_pathing_settings()};
+
+    BOOST_CHECK_EQUAL(points.cbegin()->base_value, 108);
+    BOOST_CHECK_EQUAL(points.cbegin()->active_drum_fill_value_delta, -30);
+}
+
+BOOST_AUTO_TEST_CASE(fortnite_pro_drums_active_fill_keeps_skipped_double_kick)
+{
+    std::vector<SightRead::Note> notes {
+        make_drum_note(0, SightRead::DRUM_RED),
+        make_drum_note(0, SightRead::DRUM_DOUBLE_KICK)};
+    SightRead::NoteTrack track {notes, SightRead::TrackType::Drums,
+                                std::make_unique<SightRead::SongGlobalData>()};
+    PointSet points {track, default_od_beat_mode_data(),
+                     default_fortnite_pro_drums_pathing_settings()};
+
+    BOOST_CHECK_EQUAL(std::distance(points.cbegin(), points.cend()), 1);
+    BOOST_CHECK_EQUAL(points.cbegin()->active_drum_fill_value_delta, 42);
+}
+
+BOOST_AUTO_TEST_CASE(normal_drums_do_not_replace_active_fill_notes)
+{
+    std::vector<SightRead::Note> notes {
+        make_drum_note(0, SightRead::DRUM_RED)};
+    SightRead::NoteTrack track {notes, SightRead::TrackType::Drums,
+                                std::make_unique<SightRead::SongGlobalData>()};
+    PointSet points {track, default_measure_mode_data(),
+                     default_drums_pathing_settings()};
+
+    BOOST_CHECK_EQUAL(points.cbegin()->active_drum_fill_value_delta, 0);
 }
 
 BOOST_AUTO_TEST_CASE(dynamics_get_double_points)

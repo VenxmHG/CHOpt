@@ -43,6 +43,11 @@ struct Point {
     std::optional<SightRead::Second> fill_delay_position;
     int value;
     int base_value;
+    int active_drum_fill_value_delta;
+    int active_drum_fill_replacement_value;
+    bool active_drum_fill_generated_note;
+    bool active_drum_fill_keeps_kick;
+    bool active_drum_fill_keeps_double_kick;
     int clean_play_bonus;
     bool is_hold_point;
     bool is_sp_granting_note;

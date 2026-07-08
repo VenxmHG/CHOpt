@@ -226,6 +226,137 @@ ProcessedSong::drum_fill_delay_bounds(PointPtr sp_granting_point) const
                 + m_drum_fill_delay};
 }
 
+SightRead::Second ProcessedSong::fill_delay_position(PointPtr point) const
+{
+    return point->fill_delay_position.value_or(
+        point->fill_start.value_or(SightRead::Second {0.0}));
+}
+
+bool ProcessedSong::is_active_fill(PointPtr point,
+                                   SightRead::Second early_fill_point) const
+{
+    return point->fill_start.has_value()
+        && fill_delay_position(point) >= early_fill_point;
+}
+
+std::optional<std::pair<PointPtr, SightRead::Second>>
+active_fill_search_start(const ProcessedSong& song, PointPtr start,
+                         PointPtr end)
+{
+    auto sp_count = 0;
+    const auto activation_phrase_count = song.drum_activation_phrase_count();
+    while (start < end && sp_count < activation_phrase_count) {
+        if (start->is_sp_granting_note) {
+            ++sp_count;
+        }
+        ++start;
+    }
+    if (sp_count < activation_phrase_count) {
+        return std::nullopt;
+    }
+
+    return std::pair {start, song.drum_fill_delay_bounds(std::prev(start)).first};
+}
+
+int ProcessedSong::skipped_active_fill_score_delta(PointPtr start,
+                                                   PointPtr end) const
+{
+    const auto search_start = active_fill_search_start(*this, start, end);
+    if (!search_start.has_value()) {
+        return 0;
+    }
+    const auto [first_point, early_fill_point] = *search_start;
+    return std::accumulate(first_point, end, 0, [&](const auto total,
+                                                   const auto& point) {
+        if (!is_active_fill(&point, early_fill_point)) {
+            return total;
+        }
+        return total + point.active_drum_fill_value_delta;
+    });
+}
+
+int ProcessedSong::activation_start_fill_score_delta(PointPtr start,
+                                                     PointPtr act_start) const
+{
+    const auto search_start
+        = active_fill_search_start(*this, start, std::next(act_start));
+    if (!search_start.has_value()) {
+        return 0;
+    }
+    const auto [first_point, early_fill_point] = *search_start;
+    if (act_start < first_point || !is_active_fill(act_start, early_fill_point)) {
+        return 0;
+    }
+    if (act_start->active_drum_fill_generated_note) {
+        return act_start->active_drum_fill_value_delta
+            + act_start->active_drum_fill_replacement_value;
+    }
+    return 2 * act_start->active_drum_fill_value_delta;
+}
+
+std::vector<PointPtr>
+ProcessedSong::active_drum_fill_replacement_points(const Path& path) const
+{
+    std::vector<PointPtr> replacement_points;
+    auto* start_point = m_points.cbegin();
+
+    const auto append_active_points = [&](PointPtr start, PointPtr end) {
+        const auto search_start = active_fill_search_start(*this, start, end);
+        if (!search_start.has_value()) {
+            return;
+        }
+        const auto [first_point, early_fill_point] = *search_start;
+        for (auto* point = first_point; point < end; ++point) {
+            if (is_active_fill(point, early_fill_point)) {
+                replacement_points.push_back(point);
+            }
+        }
+    };
+
+    for (const auto& act : path.activations) {
+        append_active_points(start_point, std::next(act.act_start));
+        start_point = std::next(act.act_end);
+    }
+    append_active_points(start_point, m_points.cend());
+
+    return replacement_points;
+}
+
+std::vector<std::tuple<PointPtr, int>>
+ProcessedSong::active_drum_fill_score_adjustments(const Path& path) const
+{
+    std::vector<std::tuple<PointPtr, int>> adjustments;
+    auto* start_point = m_points.cbegin();
+
+    const auto append_skipped_adjustments = [&](PointPtr start, PointPtr end) {
+        const auto search_start = active_fill_search_start(*this, start, end);
+        if (!search_start.has_value()) {
+            return;
+        }
+        const auto [first_point, early_fill_point] = *search_start;
+        for (auto* point = first_point; point < end; ++point) {
+            if (is_active_fill(point, early_fill_point)
+                && point->active_drum_fill_value_delta != 0) {
+                adjustments.emplace_back(point,
+                                         point->active_drum_fill_value_delta);
+            }
+        }
+    };
+
+    for (const auto& act : path.activations) {
+        append_skipped_adjustments(start_point, act.act_start);
+        const auto start_delta
+            = activation_start_fill_score_delta(start_point, act.act_start);
+        if (start_delta != 0) {
+            adjustments.emplace_back(act.act_start, start_delta);
+        }
+        start_point = std::next(act.act_end);
+    }
+    append_skipped_adjustments(start_point, m_points.cend());
+
+    return adjustments;
+}
+
 SpBar ProcessedSong::total_available_sp(
     SightRead::Beat start, PointPtr first_point, PointPtr act_start,
     SightRead::Beat required_whammy_end) const
@@ -578,10 +709,6 @@ ProcessedSong::drum_act_summaries(const Path& path) const
     std::vector<std::string> activation_summaries;
     const auto* start_point = m_points.cbegin();
     const auto activation_phrase_count = drum_activation_phrase_count();
-    const auto fill_delay_position = [](const Point& point) {
-        return point.fill_delay_position.value_or(
-            point.fill_start.value_or(SightRead::Second {0.0}));
-    };
     for (const auto& act : path.activations) {
         int sp_count = 0;
         while (sp_count < activation_phrase_count) {
@@ -593,8 +720,7 @@ ProcessedSong::drum_act_summaries(const Path& path) const
         const auto [early_fill_point, late_fill_point]
             = drum_fill_delay_bounds(std::prev(start_point));
         const auto is_fill_active = [&](const Point& p) {
-            return p.fill_start.has_value()
-                && fill_delay_position(p) >= early_fill_point;
+            return is_active_fill(&p, early_fill_point);
         };
         const auto skipped_fills
             = std::count_if(start_point, act.act_start, [&](const auto& p) {
@@ -602,13 +728,13 @@ ProcessedSong::drum_act_summaries(const Path& path) const
               });
         assert(act.act_start->fill_start.has_value());
         if (skipped_fills == 0
-            && late_fill_point > fill_delay_position(*act.act_start)) {
+            && late_fill_point > fill_delay_position(act.act_start)) {
             activation_summaries.emplace_back("0(E)");
         } else if (skipped_fills > 0) {
             while (!is_fill_active(*start_point)) {
                 ++start_point;
             }
-            const auto fill_position = fill_delay_position(*start_point);
+            const auto fill_position = fill_delay_position(start_point);
             if (late_fill_point > fill_position
                 && early_fill_point < fill_position) {
                 activation_summaries.push_back(std::to_string(skipped_fills - 1)

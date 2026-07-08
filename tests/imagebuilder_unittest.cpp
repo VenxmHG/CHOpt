@@ -186,6 +186,141 @@ BOOST_AUTO_TEST_CASE(drums_gets_the_right_track_type)
 
 BOOST_AUTO_TEST_SUITE_END()
 
+BOOST_AUTO_TEST_SUITE(fortnite_pro_drums_active_fill_rendering)
+
+BOOST_AUTO_TEST_CASE(active_fill_note_renders_as_green_cymbal_with_kick)
+{
+    std::vector<SightRead::Note> notes {
+        make_drum_note(0), make_drum_note(192, SightRead::DRUM_RED),
+        make_drum_chord(
+            193, {SightRead::DRUM_RED, SightRead::DRUM_KICK}),
+        make_drum_note(384, SightRead::DRUM_YELLOW)};
+    std::vector<SightRead::StarPower> phrases {
+        {.position = SightRead::Tick {0}, .length = SightRead::Tick {1}}};
+    std::vector<SightRead::DrumFill> fills {
+        {.position = SightRead::Tick {191}, .length = SightRead::Tick {2}}};
+    SightRead::NoteTrack track {notes, SightRead::TrackType::Drums,
+                                std::make_shared<SightRead::SongGlobalData>()};
+    track.sp_phrases(phrases);
+    track.drum_fills(fills);
+    ProcessedSong song {track, default_od_beat_mode_data(),
+                        default_fortnite_pro_drums_pathing_settings()};
+    Path path;
+    ImageBuilder builder {track,
+                          SightRead::Difficulty::Expert,
+                          default_fortnite_pro_drums_pathing_settings()
+                              .drum_settings,
+                          false,
+                          true,
+                          false};
+
+    builder.apply_active_drum_fill_note_replacements(song, path);
+
+    BOOST_REQUIRE_EQUAL(builder.notes().size(), 5U);
+    const auto kick = std::ranges::find_if(builder.notes(), [](const auto& n) {
+        return n.lengths.at(SightRead::DRUM_KICK) == 0.0;
+    });
+    const auto original_red
+        = std::ranges::find_if(builder.notes(), [](const auto& n) {
+              return n.lengths.at(SightRead::DRUM_RED) == 0.0;
+          });
+    const auto replacement
+        = std::ranges::find_if(builder.notes(), [](const auto& n) {
+              return (n.note_flags & SightRead::FLAGS_CYMBAL) != 0U
+                  && n.lengths.at(SightRead::DRUM_GREEN) == 0.0;
+          });
+    BOOST_REQUIRE(kick != builder.notes().cend());
+    BOOST_REQUIRE(original_red != builder.notes().cend());
+    BOOST_REQUIRE(replacement != builder.notes().cend());
+    BOOST_CHECK_EQUAL(kick->note_flags, SightRead::FLAGS_DRUMS);
+    BOOST_CHECK_EQUAL(kick->lengths.at(SightRead::DRUM_KICK), 0.0);
+    BOOST_CHECK_EQUAL(kick->lengths.at(SightRead::DRUM_RED), -1.0);
+    BOOST_CHECK_EQUAL(original_red->lengths.at(SightRead::DRUM_RED), 0.0);
+    BOOST_CHECK_EQUAL(replacement->note_flags,
+                      SightRead::FLAGS_DRUMS | SightRead::FLAGS_CYMBAL);
+    BOOST_CHECK_EQUAL(replacement->lengths.at(SightRead::DRUM_GREEN), 0.0);
+    BOOST_CHECK_EQUAL(replacement->lengths.at(SightRead::DRUM_KICK), -1.0);
+    BOOST_CHECK_EQUAL(replacement->lengths.at(SightRead::DRUM_RED), -1.0);
+}
+
+BOOST_AUTO_TEST_CASE(inactive_fill_note_keeps_original_rendering)
+{
+    std::vector<SightRead::Note> notes {
+        make_drum_note(0), make_drum_note(192, SightRead::DRUM_RED)};
+    std::vector<SightRead::DrumFill> fills {
+        {.position = SightRead::Tick {191}, .length = SightRead::Tick {2}}};
+    SightRead::NoteTrack track {notes, SightRead::TrackType::Drums,
+                                std::make_shared<SightRead::SongGlobalData>()};
+    track.drum_fills(fills);
+    ProcessedSong song {track, default_od_beat_mode_data(),
+                        default_fortnite_pro_drums_pathing_settings()};
+    Path path;
+    ImageBuilder builder {track,
+                          SightRead::Difficulty::Expert,
+                          default_fortnite_pro_drums_pathing_settings()
+                              .drum_settings,
+                          false,
+                          true,
+                          false};
+
+    builder.apply_active_drum_fill_note_replacements(song, path);
+
+    BOOST_REQUIRE_EQUAL(builder.notes().size(), 2U);
+    BOOST_CHECK_EQUAL(builder.notes().at(1).lengths.at(SightRead::DRUM_RED),
+                      0.0);
+    BOOST_CHECK_EQUAL(builder.notes().at(1).lengths.at(SightRead::DRUM_GREEN),
+                      -1.0);
+}
+
+BOOST_AUTO_TEST_CASE(active_fill_note_renders_skipped_double_kick)
+{
+    std::vector<SightRead::Note> notes {
+        make_drum_note(0), make_drum_note(192, SightRead::DRUM_RED),
+        make_drum_note(193, SightRead::DRUM_DOUBLE_KICK)};
+    std::vector<SightRead::StarPower> phrases {
+        {.position = SightRead::Tick {0}, .length = SightRead::Tick {1}}};
+    std::vector<SightRead::DrumFill> fills {
+        {.position = SightRead::Tick {191}, .length = SightRead::Tick {2}}};
+    SightRead::NoteTrack track {notes, SightRead::TrackType::Drums,
+                                std::make_shared<SightRead::SongGlobalData>()};
+    track.sp_phrases(phrases);
+    track.drum_fills(fills);
+    ProcessedSong song {track, default_od_beat_mode_data(),
+                        default_fortnite_pro_drums_pathing_settings()};
+    Path path;
+    ImageBuilder builder {track,
+                          SightRead::Difficulty::Expert,
+                          default_fortnite_pro_drums_pathing_settings()
+                              .drum_settings,
+                          false,
+                          true,
+                          false};
+
+    builder.apply_active_drum_fill_note_replacements(song, path);
+
+    BOOST_REQUIRE_EQUAL(builder.notes().size(), 4U);
+    const auto double_kick
+        = std::ranges::find_if(builder.notes(), [](const auto& n) {
+              return n.lengths.at(SightRead::DRUM_DOUBLE_KICK) == 0.0;
+          });
+    const auto replacement
+        = std::ranges::find_if(builder.notes(), [](const auto& n) {
+              return (n.note_flags & SightRead::FLAGS_CYMBAL) != 0U
+                  && n.lengths.at(SightRead::DRUM_GREEN) == 0.0;
+          });
+    BOOST_REQUIRE(double_kick != builder.notes().cend());
+    BOOST_REQUIRE(replacement != builder.notes().cend());
+    BOOST_CHECK_EQUAL(double_kick->note_flags, SightRead::FLAGS_DRUMS);
+    BOOST_CHECK_EQUAL(double_kick->lengths.at(SightRead::DRUM_DOUBLE_KICK),
+                      0.0);
+    BOOST_CHECK_EQUAL(replacement->lengths.at(SightRead::DRUM_GREEN), 0.0);
+    BOOST_CHECK_EQUAL(replacement->lengths.at(SightRead::DRUM_DOUBLE_KICK),
+                      -1.0);
+    BOOST_CHECK_EQUAL(replacement->lengths.at(SightRead::DRUM_RED), -1.0);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
 BOOST_AUTO_TEST_SUITE(notes_are_handled_correctly)
 
 BOOST_AUTO_TEST_CASE(non_sp_non_sustains_are_handled_correctly)

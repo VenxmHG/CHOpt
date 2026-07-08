@@ -65,6 +65,10 @@ public:
     {
         return DrumFillDelayAnchor::FillStart;
     }
+    [[nodiscard]] virtual bool replaces_active_drum_fill_notes() const
+    {
+        return false;
+    }
     [[nodiscard]] virtual double burst_size() const = 0;
     [[nodiscard]] virtual bool chords_multiply_sustains() const = 0;
     [[nodiscard]] virtual int clean_play_bonus() const = 0;
@@ -312,6 +316,10 @@ private:
     [[nodiscard]] DrumFillDelayAnchor drum_fill_delay_anchor() const override
     {
         return DrumFillDelayAnchor::FirstPointAfterFillStart;
+    }
+    [[nodiscard]] bool replaces_active_drum_fill_notes() const override
+    {
+        return true;
     }
     [[nodiscard]] int max_multiplier() const override { return 4; }
     [[nodiscard]] int sust_points_per_beat() const override { return 12; }

@@ -136,6 +136,9 @@ public:
     void add_measure_values(const PointSet& points,
                             const SightRead::TempoMap& tempo_map,
                             const Path& path);
+    void add_measure_values(const ProcessedSong& song,
+                            const SightRead::TempoMap& tempo_map,
+                            const Path& path);
     void add_measure_values(const VocalsProcessedSong& song,
                             const VocalPath& path);
     void add_practice_sections(
@@ -147,6 +150,8 @@ public:
     void add_sp_acts(const PointSet& points,
                      const SightRead::TempoMap& tempo_map, const Path& path);
     void add_sp_acts(const VocalPath& path);
+    void apply_active_drum_fill_note_replacements(const ProcessedSong& song,
+                                                  const Path& path);
     void add_vocal_squeeze_guides(
         const VocalsProcessedSong& song, const VocalPath& path,
         VocalPathNotation notation = VocalPathNotation::Rbpv);

@@ -89,6 +89,7 @@ private:
     out_edges(OptimiserGraph& graph, std::size_t vertex) const;
     void add_acts_from_starting_point(
         PointPtr starting_point, SpPosition starting_pos, SpBar sp_bar,
+        int skipped_fill_score_delta, int activation_fill_score_delta,
         ActivationEndSet<PointPtr>& attained_act_ends,
         OutEdgeAggregate<PathGraphVertex, ProtoActivation>& optimal_out_edges)
         const;

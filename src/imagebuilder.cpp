@@ -17,6 +17,7 @@
  */
 
 #include <cstdint>
+#include <cmath>
 #include <iterator>
 #include <limits>
 
@@ -629,6 +630,32 @@ void ImageBuilder::add_measure_values(const PointSet& points,
     }
 }
 
+void ImageBuilder::add_measure_values(const ProcessedSong& song,
+                                      const SightRead::TempoMap& tempo_map,
+                                      const Path& path)
+{
+    add_measure_values(song.points(), tempo_map, path);
+
+    for (const auto& [point, delta] :
+         song.active_drum_fill_score_adjustments(path)) {
+        const auto adjusted_pos
+            = subtract_video_lag(point->position.beat,
+                                 song.points().video_lag(), tempo_map)
+                  .value();
+        auto meas_iter = std::next(m_measure_lines.cbegin());
+        auto score_value_iter = m_score_values.begin();
+        while (meas_iter != m_measure_lines.cend()
+               && *meas_iter <= adjusted_pos) {
+            ++meas_iter;
+            ++score_value_iter;
+        }
+        while (score_value_iter != m_score_values.end()) {
+            *score_value_iter += delta;
+            ++score_value_iter;
+        }
+    }
+}
+
 void ImageBuilder::add_measure_values(const VocalsProcessedSong& song,
                                       const VocalPath& path)
 {
@@ -750,6 +777,124 @@ void ImageBuilder::add_sp_acts(const VocalPath& path)
     for (const auto& act : path.activations) {
         m_blue_ranges.emplace_back(act.start.value(), act.end.value());
     }
+}
+
+void ImageBuilder::apply_active_drum_fill_note_replacements(
+    const ProcessedSong& song, const Path& path)
+{
+    constexpr double BEAT_EPSILON = 0.000001;
+    const auto replacement_points = song.active_drum_fill_replacement_points(path);
+    if (replacement_points.empty()) {
+        return;
+    }
+
+    struct ReplacementNote {
+        double beat;
+        bool keeps_kick;
+        bool keeps_double_kick;
+    };
+
+    std::vector<ReplacementNote> replacement_notes_to_apply;
+    replacement_notes_to_apply.reserve(replacement_points.size());
+    for (const auto* point : replacement_points) {
+        auto seconds = song.sp_time_map().to_seconds(point->position.beat);
+        seconds -= song.points().video_lag();
+        replacement_notes_to_apply.push_back(
+            {.beat = song.sp_time_map().to_beats(seconds).value(),
+             .keeps_kick = point->active_drum_fill_keeps_kick,
+             .keeps_double_kick = point->active_drum_fill_keeps_double_kick});
+    }
+
+    const auto replacement_at = [&](double beat) {
+        return std::ranges::find_if(
+            replacement_notes_to_apply, [&](const auto& replacement) {
+                return std::abs(replacement.beat - beat) < BEAT_EPSILON;
+            });
+    };
+    const auto same_beat = [](const DrawnNote& note, double beat) {
+        return std::abs(note.beat - beat) < BEAT_EPSILON;
+    };
+    const auto has_lane = [](const DrawnNote& note, SightRead::DrumNotes lane) {
+        return note.lengths.at(lane) != -1.0;
+    };
+    std::vector<DrawnNote> replacement_notes;
+    replacement_notes.reserve(m_notes.size());
+    std::vector<double> emitted_beats;
+
+    const auto replacement_at_beat = [&](double beat) {
+        const auto replacement_iter = replacement_at(beat);
+        if (replacement_iter == replacement_notes_to_apply.cend()) {
+            return;
+        }
+
+        auto keeps_kick = replacement_iter->keeps_kick;
+        auto keeps_double_kick = replacement_iter->keeps_double_kick;
+        for (const auto& same_position_note : m_notes) {
+            if (!same_beat(same_position_note, beat)) {
+                continue;
+            }
+            keeps_kick
+                = keeps_kick || has_lane(same_position_note,
+                                          SightRead::DRUM_KICK);
+            keeps_double_kick
+                = keeps_double_kick
+                || has_lane(same_position_note, SightRead::DRUM_DOUBLE_KICK);
+        }
+
+        if (keeps_kick) {
+            DrawnNote kick {};
+            kick.beat = beat;
+            kick.note_flags = SightRead::FLAGS_DRUMS;
+            kick.lengths.fill(-1.0);
+            kick.lengths.at(SightRead::DRUM_KICK) = 0.0;
+            kick.is_sp_note = false;
+            replacement_notes.push_back(kick);
+        }
+        if (keeps_double_kick) {
+            DrawnNote double_kick {};
+            double_kick.beat = beat;
+            double_kick.note_flags = SightRead::FLAGS_DRUMS;
+            double_kick.lengths.fill(-1.0);
+            double_kick.lengths.at(SightRead::DRUM_DOUBLE_KICK) = 0.0;
+            double_kick.is_sp_note = false;
+            replacement_notes.push_back(double_kick);
+        }
+
+        DrawnNote cymbal {};
+        cymbal.beat = beat;
+        cymbal.note_flags
+            = static_cast<SightRead::NoteFlags>(SightRead::FLAGS_DRUMS
+                                                | SightRead::FLAGS_CYMBAL);
+        cymbal.lengths.fill(-1.0);
+        cymbal.lengths.at(SightRead::DRUM_GREEN) = 0.0;
+        cymbal.is_sp_note = false;
+        replacement_notes.push_back(cymbal);
+        emitted_beats.push_back(beat);
+    };
+
+    for (const auto& note : m_notes) {
+        const auto replacement_iter = replacement_at(note.beat);
+        if (replacement_iter == replacement_notes_to_apply.cend()) {
+            replacement_notes.push_back(note);
+            continue;
+        }
+        if (std::ranges::any_of(emitted_beats, [&](double beat) {
+                return std::abs(note.beat - beat) < BEAT_EPSILON;
+            })) {
+            continue;
+        }
+
+        replacement_at_beat(note.beat);
+    }
+    for (const auto& replacement : replacement_notes_to_apply) {
+        if (std::ranges::none_of(emitted_beats, [&](double beat) {
+                return std::abs(replacement.beat - beat) < BEAT_EPSILON;
+            })) {
+            replacement_at_beat(replacement.beat);
+        }
+    }
+    std::ranges::stable_sort(replacement_notes, {}, &DrawnNote::beat);
+    m_notes = std::move(replacement_notes);
 }
 
 void ImageBuilder::add_vocal_squeeze_guides(const VocalsProcessedSong& song,
@@ -1036,13 +1181,15 @@ ImageBuilder make_builder(SightRead::Song& song,
             write(processed_track.path_summary(path).c_str());
             builder.add_sp_phrases(new_track, unison_phrases, path);
             builder.add_sp_acts(processed_track.points(), tempo_map, path);
+            builder.apply_active_drum_fill_note_replacements(processed_track,
+                                                             path);
             builder.activation_opacity() = settings.opacity;
         }
     } else {
         builder.add_sp_phrases(new_track, unison_phrases, path);
     }
 
-    builder.add_measure_values(processed_track.points(), tempo_map, path);
+    builder.add_measure_values(processed_track, tempo_map, path);
     if (settings.blank || !settings.pathing_settings.engine->overlaps()) {
         builder.add_sp_values(processed_track.sp_data(),
                               *settings.pathing_settings.engine);

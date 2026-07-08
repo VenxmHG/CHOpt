@@ -187,6 +187,21 @@ make_drum_note(int position, SightRead::DrumNotes colour = SightRead::DRUM_RED,
     return note;
 }
 
+inline SightRead::Note make_drum_chord(
+    int position, const std::vector<SightRead::DrumNotes>& colours,
+    SightRead::NoteFlags flags = SightRead::FLAGS_NONE)
+{
+    SightRead::Note note;
+    note.position = SightRead::Tick {position};
+    note.flags
+        = static_cast<SightRead::NoteFlags>(flags | SightRead::FLAGS_DRUMS);
+    for (const auto colour : colours) {
+        note.lengths.at(colour) = SightRead::Tick {0};
+    }
+
+    return note;
+}
+
 inline PathingSettings default_drums_pathing_settings()
 {
     return {.engine = std::make_unique<ChDrumEngine>(),

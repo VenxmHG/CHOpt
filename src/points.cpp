@@ -73,6 +73,11 @@ void append_sustain_point(OutputIt points, SpPosition position, int value,
                        .fill_delay_position = {},
                        .value = value,
                        .base_value = value,
+                       .active_drum_fill_value_delta = 0,
+                       .active_drum_fill_replacement_value = 0,
+                       .active_drum_fill_generated_note = false,
+                       .active_drum_fill_keeps_kick = false,
+                       .active_drum_fill_keeps_double_kick = false,
                        .clean_play_bonus = 0,
                        .is_hold_point = true,
                        .is_sp_granting_note = false,
@@ -287,6 +292,68 @@ int clean_bonus_multiplier(const SightRead::Note& note,
     return get_chord_size(note, drum_settings);
 }
 
+bool note_has_lane(const SightRead::Note& note, SightRead::DrumNotes lane)
+{
+    return note.lengths.at(lane) != SightRead::Tick {-1};
+}
+
+int kick_count(const SightRead::Note& note)
+{
+    auto count = 0;
+    if (note_has_lane(note, SightRead::DRUM_KICK)) {
+        ++count;
+    }
+    if (note_has_lane(note, SightRead::DRUM_DOUBLE_KICK)) {
+        ++count;
+    }
+    return count;
+}
+
+int replacement_kick_count(std::vector<SightRead::Note>::const_iterator note,
+                           const std::vector<SightRead::Note>& notes,
+                           const SightRead::DrumSettings& drum_settings)
+{
+    auto count = 0;
+    for (auto it = notes.cbegin(); it != notes.cend(); ++it) {
+        if (it->position != note->position) {
+            continue;
+        }
+        if (it == note || it->is_skipped_kick(drum_settings)) {
+            count += kick_count(*it);
+        }
+    }
+    return count;
+}
+
+int same_tick_kick_count(const std::vector<SightRead::Note>& notes,
+                         SightRead::Tick position)
+{
+    auto count = 0;
+    for (const auto& note : notes) {
+        if (note.position == position) {
+            count += kick_count(note);
+        }
+    }
+    return count;
+}
+
+bool replacement_keeps_kick_lane(
+    std::vector<SightRead::Note>::const_iterator note,
+    const std::vector<SightRead::Note>& notes,
+    const SightRead::DrumSettings& drum_settings, SightRead::DrumNotes lane)
+{
+    for (auto it = notes.cbegin(); it != notes.cend(); ++it) {
+        if (it->position != note->position) {
+            continue;
+        }
+        if ((it == note || it->is_skipped_kick(drum_settings))
+            && note_has_lane(*it, lane)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 template <typename OutputIt>
 void append_note_points(std::vector<SightRead::Note>::const_iterator note,
                         const std::vector<SightRead::Note>& notes,
@@ -334,6 +401,26 @@ void append_note_points(std::vector<SightRead::Note>::const_iterator note,
     const SightRead::Second late_window {
         pathing_settings.engine->late_timing_window(early_gap, late_gap)
         * pathing_settings.squeeze};
+    auto active_drum_fill_value_delta = 0;
+    auto active_drum_fill_replacement_value = 0;
+    auto active_drum_fill_keeps_kick = false;
+    auto active_drum_fill_keeps_double_kick = false;
+    if (pathing_settings.engine->replaces_active_drum_fill_notes()
+        && (note->flags & SightRead::FLAGS_DRUMS) != 0U) {
+        active_drum_fill_keeps_kick = replacement_keeps_kick_lane(
+            note, notes, pathing_settings.drum_settings, SightRead::DRUM_KICK);
+        active_drum_fill_keeps_double_kick = replacement_keeps_kick_lane(
+            note, notes, pathing_settings.drum_settings,
+            SightRead::DRUM_DOUBLE_KICK);
+        const auto replacement_base_value
+            = pathing_settings.engine->base_cymbal_value()
+            + replacement_kick_count(note, notes,
+                                     pathing_settings.drum_settings)
+                * pathing_settings.engine->base_note_value();
+        active_drum_fill_replacement_value = replacement_base_value;
+        active_drum_fill_value_delta
+            = replacement_base_value - note_value * chord_size;
+    }
 
     const auto early_beat = time_map.to_beats(note_seconds - early_window);
     const auto early_meas = time_map.to_sp_measures(early_beat);
@@ -352,6 +439,13 @@ void append_note_points(std::vector<SightRead::Note>::const_iterator note,
         .fill_delay_position = {},
         .value = note_value * chord_size,
         .base_value = note_value * chord_size,
+        .active_drum_fill_value_delta = active_drum_fill_value_delta,
+        .active_drum_fill_replacement_value
+        = active_drum_fill_replacement_value,
+        .active_drum_fill_generated_note = false,
+        .active_drum_fill_keeps_kick = active_drum_fill_keeps_kick,
+        .active_drum_fill_keeps_double_kick
+        = active_drum_fill_keeps_double_kick,
         .clean_play_bonus = pathing_settings.engine->clean_play_bonus()
             * clean_bonus_multiplier(*note, pathing_settings.drum_settings),
         .is_hold_point = false,
@@ -396,8 +490,102 @@ std::vector<Point>::iterator closest_point(std::vector<Point>& points,
     return nearest;
 }
 
+std::vector<Point>::iterator last_point_in_fill(std::vector<Point>& points,
+                                                SightRead::Beat fill_end)
+{
+    assert(!points.empty());
+    auto first_after_fill = std::find_if(points.begin(), points.end(),
+                                         [&](const auto& point) {
+                                             return point.position.beat
+                                                 > fill_end;
+                                         });
+    if (first_after_fill == points.begin()) {
+        return closest_point(points, fill_end);
+    }
+
+    auto point = std::prev(first_after_fill);
+    while (point != points.begin()
+           && std::prev(point)->position.beat.value()
+               == point->position.beat.value()) {
+        --point;
+    }
+    return point;
+}
+
+int chart_value_at(const std::vector<Point>& points, SightRead::Beat beat)
+{
+    return std::accumulate(points.cbegin(), points.cend(), 0,
+                           [&](const auto total, const auto& point) {
+        if (point.is_hold_point || point.position.beat.value() != beat.value()) {
+            return total;
+        }
+        return total + point.value;
+    });
+}
+
+Point generated_pro_drum_activation_point(
+    const SightRead::NoteTrack& track, const std::vector<Point>& points,
+    const SpTimeMap& time_map, const Engine& engine, SightRead::DrumFill fill)
+{
+    const auto& tempo_map = track.global_data().tempo_map();
+    const auto fill_start = tempo_map.to_beats(fill.position);
+    const auto fill_end_tick = fill.position + fill.length;
+    const auto fill_end = tempo_map.to_beats(fill_end_tick);
+    const auto fill_end_meas = time_map.to_sp_measures(fill_end);
+    const auto fill_end_pos
+        = SpPosition {.beat = fill_end, .sp_measure = fill_end_meas};
+    const auto replacement_value
+        = engine.base_cymbal_value()
+        + same_tick_kick_count(track.notes(), fill_end_tick)
+            * engine.base_note_value();
+    const auto original_value = chart_value_at(points, fill_end);
+    const auto keeps_kick = std::ranges::any_of(
+        track.notes(), [&](const auto& note) {
+            return note.position == fill_end_tick
+                && note_has_lane(note, SightRead::DRUM_KICK);
+        });
+    const auto keeps_double_kick = std::ranges::any_of(
+        track.notes(), [&](const auto& note) {
+            return note.position == fill_end_tick
+                && note_has_lane(note, SightRead::DRUM_DOUBLE_KICK);
+        });
+
+    auto delay_position = fill_start;
+    if (engine.drum_fill_delay_anchor()
+        == DrumFillDelayAnchor::FirstPointAfterFillStart) {
+        const auto first_after_start
+            = std::find_if(points.cbegin(), points.cend(), [&](const auto& point) {
+                  return !point.is_hold_point && point.position.beat > fill_start;
+              });
+        if (first_after_start != points.cend()) {
+            delay_position = first_after_start->position.beat;
+        } else {
+            delay_position = fill_end;
+        }
+    }
+
+    return {.position = fill_end_pos,
+            .hit_window_start = fill_end_pos,
+            .hit_window_end = fill_end_pos,
+            .max_sqz_hit_window_start = fill_end_pos,
+            .fill_start = tempo_map.to_seconds(fill_start),
+            .fill_delay_position = tempo_map.to_seconds(delay_position),
+            .value = 0,
+            .base_value = 0,
+            .active_drum_fill_value_delta = replacement_value - original_value,
+            .active_drum_fill_replacement_value = replacement_value,
+            .active_drum_fill_generated_note = true,
+            .active_drum_fill_keeps_kick = keeps_kick,
+            .active_drum_fill_keeps_double_kick = keeps_double_kick,
+            .clean_play_bonus = 0,
+            .is_hold_point = true,
+            .is_sp_granting_note = false,
+            .is_unison_sp_granting_note = false};
+}
+
 void add_drum_activation_points(const SightRead::NoteTrack& track,
                                 std::vector<Point>& points,
+                                const SpTimeMap& time_map,
                                 const Engine& engine)
 {
     if (points.empty()) {
@@ -405,6 +593,11 @@ void add_drum_activation_points(const SightRead::NoteTrack& track,
     }
     const auto& tempo_map = track.global_data().tempo_map();
     for (auto fill : track.drum_fills()) {
+        if (engine.replaces_active_drum_fill_notes()) {
+            points.push_back(generated_pro_drum_activation_point(
+                track, points, time_map, engine, fill));
+            continue;
+        }
         const auto fill_start = tempo_map.to_beats(fill.position);
         const auto fill_end = tempo_map.to_beats(fill.position + fill.length);
         const auto best_point = closest_point(points, fill_end);
@@ -498,6 +691,14 @@ void apply_multiplier(std::vector<Point>& points, const Engine& engine)
 
     auto combo = 0;
     for (auto& point : points) {
+        if (point.active_drum_fill_generated_note) {
+            const auto multiplier = std::min(
+                combo / COMBO_PER_MULTIPLIER_LEVEL + 1,
+                engine.max_multiplier());
+            point.active_drum_fill_value_delta *= multiplier;
+            point.active_drum_fill_replacement_value *= multiplier;
+            continue;
+        }
         if (!point.is_hold_point) {
             ++combo;
         }
@@ -508,6 +709,8 @@ void apply_multiplier(std::vector<Point>& points, const Engine& engine)
                                   engine.max_multiplier());
         }
         point.value *= multiplier;
+        point.active_drum_fill_value_delta *= multiplier;
+        point.active_drum_fill_replacement_value *= multiplier;
     }
 }
 
@@ -713,7 +916,11 @@ std::vector<Point> points_from_track(const SightRead::NoteTrack& track,
 {
     auto points = unmultiplied_points(track, duration_data, pathing_settings);
     if (track.track_type() == SightRead::TrackType::Drums) {
-        add_drum_activation_points(track, points, *pathing_settings.engine);
+        add_drum_activation_points(track, points, duration_data.time_map,
+                                   *pathing_settings.engine);
+        std::ranges::stable_sort(points, [](const auto& x, const auto& y) {
+            return x.position.beat < y.position.beat;
+        });
     }
     apply_multiplier(points, *pathing_settings.engine);
     shift_points_by_video_lag(points, duration_data.time_map,

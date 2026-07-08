@@ -155,10 +155,35 @@ Optimiser::out_edges(OptimiserGraph& graph, std::size_t vertex_id) const
     auto lower_bound_set = false;
 
     OutEdgeAggregate<PathGraphVertex, ProtoActivation> optimal_out_edges;
+    const auto active_fill_score_delta = [&](PointPtr start, PointPtr end) {
+        if (!vertex.is_max_sp_vertex) {
+            return m_song->skipped_active_fill_score_delta(start, end);
+        }
+        return std::accumulate(start, end, 0, [&](const auto total,
+                                                  const auto& point) {
+            if (!m_song->is_active_fill(&point, SightRead::Second {0.0})) {
+                return total;
+            }
+            return total + point.active_drum_fill_value_delta;
+        });
+    };
+    const auto active_activation_start_score_delta = [&](PointPtr point) {
+        if (!vertex.is_max_sp_vertex) {
+            return m_song->activation_start_fill_score_delta(vertex.point,
+                                                            point);
+        }
+        if (!m_song->is_active_fill(point, SightRead::Second {0.0})) {
+            return 0;
+        }
+        if (point->active_drum_fill_generated_note) {
+            return point->active_drum_fill_value_delta
+                + point->active_drum_fill_replacement_value;
+        }
+        return 2 * point->active_drum_fill_value_delta;
+    };
 
     for (const auto* p = vertex.point; p < m_song->points().cend(); ++p) {
-        const auto fill_delay_position = p->fill_delay_position.value_or(
-            p->fill_start.value_or(SightRead::Second {0.0}));
+        const auto fill_delay_position = m_song->fill_delay_position(p);
         if (m_song->is_drums()
             && (!p->fill_start.has_value()
                 || fill_delay_position < early_act_bound)) {
@@ -212,11 +237,34 @@ Optimiser::out_edges(OptimiserGraph& graph, std::size_t vertex_id) const
                 earliest_pt_end, m_song->points().cend()};
             lower_bound_set = true;
         }
-        add_acts_from_starting_point(p, starting_pos, sp_bar, attained_act_ends,
-                                     optimal_out_edges);
+        const auto skipped_fill_score_delta
+            = active_fill_score_delta(vertex.point, p);
+        const auto activation_fill_score_delta
+            = active_activation_start_score_delta(p);
+        add_acts_from_starting_point(p, starting_pos, sp_bar,
+                                     skipped_fill_score_delta,
+                                     activation_fill_score_delta,
+                                     attained_act_ends, optimal_out_edges);
         if (p->is_sp_granting_note) {
             attained_act_ends.clear_temporary_elements();
         }
+    }
+
+    const auto terminal_fill_score_delta
+        = active_fill_score_delta(vertex.point, m_song->points().cend());
+    if (vertex.point != m_song->points().cend()
+        && terminal_fill_score_delta != 0) {
+        PathGraphVertex terminal_vertex {.point = m_song->points().cend(),
+                                         .position
+                                         = {.beat = SightRead::Beat {
+                                                std::numeric_limits<double>::
+                                                    infinity()},
+                                            .sp_measure = SpMeasure {
+                                                std::numeric_limits<double>::
+                                                    infinity()}},
+                                         .is_max_sp_vertex = false};
+        optimal_out_edges.add_activation(terminal_vertex, {},
+                                         terminal_fill_score_delta);
     }
 
     return optimal_out_edges;
@@ -224,6 +272,7 @@ Optimiser::out_edges(OptimiserGraph& graph, std::size_t vertex_id) const
 
 void Optimiser::add_acts_from_starting_point(
     PointPtr starting_point, SpPosition starting_pos, SpBar sp_bar,
+    int skipped_fill_score_delta, int activation_fill_score_delta,
     ActivationEndSet<PointPtr>& attained_act_ends,
     OutEdgeAggregate<PathGraphVertex, ProtoActivation>& optimal_out_edges) const
 {
@@ -262,7 +311,8 @@ void Optimiser::add_acts_from_starting_point(
         }
 
         const auto act_score
-            = m_song->points().range_score(starting_point, std::next(q));
+            = m_song->points().range_score(starting_point, std::next(q))
+            + skipped_fill_score_delta + activation_fill_score_delta;
         PathGraphVertex destination {
             .point = m_song->points().first_after_current_phrase(q),
             .position = candidate_result.ending_position,

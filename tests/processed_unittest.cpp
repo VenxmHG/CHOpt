@@ -2205,3 +2205,92 @@ BOOST_AUTO_TEST_CASE(average_multiplier_is_ignored_with_rb)
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(fortnite_pro_drums_active_fill_score_adjustments)
+
+BOOST_AUTO_TEST_CASE(skipped_active_fill_before_activation_is_adjusted_once)
+{
+    std::vector<SightRead::Note> notes {
+        make_drum_note(0), make_drum_note(192, SightRead::DRUM_RED),
+        make_drum_note(384, SightRead::DRUM_RED)};
+    std::vector<SightRead::StarPower> phrases {
+        {.position = SightRead::Tick {0}, .length = SightRead::Tick {1}}};
+    std::vector<SightRead::DrumFill> fills {
+        {.position = SightRead::Tick {191}, .length = SightRead::Tick {2}},
+        {.position = SightRead::Tick {383}, .length = SightRead::Tick {2}}};
+    SightRead::NoteTrack note_track {
+        notes, SightRead::TrackType::Drums,
+        std::make_shared<SightRead::SongGlobalData>()};
+    note_track.sp_phrases(phrases);
+    note_track.drum_fills(fills);
+    ProcessedSong track {note_track, default_od_beat_mode_data(),
+                         default_fortnite_pro_drums_pathing_settings()};
+    const auto& points = track.points();
+    Path path {.activations = {{.act_start = points.cbegin() + 4,
+                                .act_end = points.cbegin() + 4}},
+               .score_boost = 0};
+
+    const auto adjustments = track.active_drum_fill_score_adjustments(path);
+
+    BOOST_REQUIRE_EQUAL(adjustments.size(), 2U);
+    BOOST_CHECK_EQUAL(std::get<0>(adjustments.at(0)), points.cbegin() + 2);
+    BOOST_CHECK_EQUAL(std::get<1>(adjustments.at(0)), 42);
+    BOOST_CHECK_EQUAL(std::get<0>(adjustments.at(1)), points.cbegin() + 4);
+    BOOST_CHECK_EQUAL(std::get<1>(adjustments.at(1)), 84);
+}
+
+BOOST_AUTO_TEST_CASE(final_skipped_active_fill_is_adjusted)
+{
+    std::vector<SightRead::Note> notes {
+        make_drum_note(0), make_drum_note(192, SightRead::DRUM_RED)};
+    std::vector<SightRead::StarPower> phrases {
+        {.position = SightRead::Tick {0}, .length = SightRead::Tick {1}}};
+    std::vector<SightRead::DrumFill> fills {
+        {.position = SightRead::Tick {191}, .length = SightRead::Tick {2}}};
+    SightRead::NoteTrack note_track {
+        notes, SightRead::TrackType::Drums,
+        std::make_shared<SightRead::SongGlobalData>()};
+    note_track.sp_phrases(phrases);
+    note_track.drum_fills(fills);
+    ProcessedSong track {note_track, default_od_beat_mode_data(),
+                         default_fortnite_pro_drums_pathing_settings()};
+    Path path;
+
+    const auto adjustments = track.active_drum_fill_score_adjustments(path);
+
+    BOOST_REQUIRE_EQUAL(adjustments.size(), 1U);
+    BOOST_CHECK_EQUAL(std::get<0>(adjustments.front()),
+                      track.points().cbegin() + 2);
+    BOOST_CHECK_EQUAL(std::get<1>(adjustments.front()), 42);
+}
+
+BOOST_AUTO_TEST_CASE(fill_during_active_sp_keeps_original_score)
+{
+    std::vector<SightRead::Note> notes {
+        make_drum_note(0), make_drum_note(192, SightRead::DRUM_RED),
+        make_drum_note(384, SightRead::DRUM_RED)};
+    std::vector<SightRead::StarPower> phrases {
+        {.position = SightRead::Tick {0}, .length = SightRead::Tick {1}}};
+    std::vector<SightRead::DrumFill> fills {
+        {.position = SightRead::Tick {191}, .length = SightRead::Tick {2}},
+        {.position = SightRead::Tick {383}, .length = SightRead::Tick {2}}};
+    SightRead::NoteTrack note_track {
+        notes, SightRead::TrackType::Drums,
+        std::make_shared<SightRead::SongGlobalData>()};
+    note_track.sp_phrases(phrases);
+    note_track.drum_fills(fills);
+    ProcessedSong track {note_track, default_od_beat_mode_data(),
+                         default_fortnite_pro_drums_pathing_settings()};
+    const auto& points = track.points();
+    Path path {.activations = {{.act_start = points.cbegin() + 2,
+                                .act_end = points.cbegin() + 4}},
+               .score_boost = 0};
+
+    const auto adjustments = track.active_drum_fill_score_adjustments(path);
+
+    BOOST_REQUIRE_EQUAL(adjustments.size(), 1U);
+    BOOST_CHECK_EQUAL(std::get<0>(adjustments.front()), points.cbegin() + 2);
+    BOOST_CHECK_EQUAL(std::get<1>(adjustments.front()), 84);
+}
+
+BOOST_AUTO_TEST_SUITE_END()

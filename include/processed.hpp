@@ -183,6 +183,18 @@ public:
     }
     [[nodiscard]] std::pair<SightRead::Second, SightRead::Second>
     drum_fill_delay_bounds(PointPtr sp_granting_point) const;
+    [[nodiscard]] SightRead::Second fill_delay_position(PointPtr point) const;
+    [[nodiscard]] bool is_active_fill(PointPtr point,
+                                      SightRead::Second early_fill_point) const;
+    [[nodiscard]] int skipped_active_fill_score_delta(PointPtr start,
+                                                      PointPtr end) const;
+    [[nodiscard]] int activation_start_fill_score_delta(PointPtr start,
+                                                        PointPtr act_start)
+        const;
+    [[nodiscard]] std::vector<PointPtr>
+    active_drum_fill_replacement_points(const Path& path) const;
+    [[nodiscard]] std::vector<std::tuple<PointPtr, int>>
+    active_drum_fill_score_adjustments(const Path& path) const;
     [[nodiscard]] const SpEngineValues& sp_engine_values() const
     {
         return m_sp_engine_values;
